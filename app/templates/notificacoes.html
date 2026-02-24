@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Centro de Notificações{% endblock %}
+{% block page_title %}Atividades Recentes{% endblock %}
+
+{% block content %}
+<div class="card p-0 overflow-hidden max-w-4xl mx-auto">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th width="160">Data/Hora</th>
+          <th width="100">Ação</th>
+          <th width="120">Entidade</th>
+          <th>Detalhes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="text-muted" style="font-size: 11px;">
+            {{ log.log_timestamp.strftime('%d/%m/%Y %H:%M:%S') }}
+          </td>
+          <td>
+            {% if log.log_acao == 'INSERT' %}
+              <span class="badge badge-success">Inserção</span>
+            {% elif log.log_acao == 'DELETE' %}
+              <span class="badge badge-danger">Exclusão</span>
+            {% elif log.log_acao == 'SYSTEM' %}
+              <span class="badge badge-accent">Sistema</span>
+            {% else %}
+              <span class="badge badge-muted">{{ log.log_acao }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge badge-outline">{{ log.log_entidade }}</span>
+          </td>
+          <td style="font-size: 13px;">
+            {{ log.log_detalhes | safe }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center p-6 text-muted">Nenhum registro encontrado.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

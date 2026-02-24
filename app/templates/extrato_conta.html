@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}Extrato — {{ conta.nome_conta }}{% endblock %}
+{% block page_title %}Extrato: {{ conta.nome_conta }}{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>{{ conta.nome_conta }}</h1>
+    <p>Histórico de lançamentos para {{ mes_por_extenso(mes, ano) }}</p>
+  </div>
+  
+  <div class="flex gap-2">
+    <!-- Navegação de Período -->
+    <div class="period-nav">
+      <a href="?c={{ conta.conta_id }}&m={{ 12 if mes == 1 else mes - 1 }}&y={{ ano - 1 if mes == 1 else ano }}" class="btn-icon btn-xs">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
+      <span>{{ mes_por_extenso(mes, ano) }}</span>
+      <a href="?c={{ conta.conta_id }}&m={{ 1 if mes == 12 else mes + 1 }}&y={{ ano + 1 if mes == 12 else ano }}" class="btn-icon btn-xs">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </div>
+    
+    <button class="btn btn-primary" onclick="openModal('modalNovoLancamento')">Novo Lançamento</button>
+  </div>
+</div>
+
+<!-- Resumo do Extrato -->
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+  <div class="stat-card">
+    <div class="stat-label">Saldo Anterior</div>
+    <div class="stat-value {{ cor_valor(saldo_anterior) }}">{{ formata_moeda(saldo_anterior) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Movimentação no Mês</div>
+    {% set mov_mes = operacoes | sum(attribute='operacoes_valor') %}
+    <div class="stat-value {{ cor_valor(mov_mes) }}">{{ formata_moeda(mov_mes) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Saldo Atual</div>
+    <div class="stat-value {{ cor_valor(saldo_anterior + mov_mes) }}">{{ formata_moeda(saldo_anterior + mov_mes) }}</div>
+  </div>
+</div>
+
+<!-- Tabela de Lançamentos -->
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th width="40"></th>
+          <th>Data</th>
+          <th>Descrição</th>
+          <th>Categoria</th>
+          <th class="text-right">Valor</th>
+          <th width="120">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in operacoes %}
+        <tr class="{% if not op.operacoes_efetivado %}text-muted{% endif %}">
+          <td class="text-center">
+            {% if op.operacoes_tipo == 1 %}
+              <svg width="14" height="14" class="text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+            {% elif op.operacoes_tipo == 3 %}
+              <svg width="14" height="14" class="text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            {% else %}
+              <svg width="14" height="14" class="text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            {% endif %}
+          </td>
+          <td class="nowrap">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+          <td>
+            <div class="flex flex-col">
+              <span class="font-bold">{{ op.operacoes_descricao }}</span>
+              {% if op.operacoes_transf_rel %}
+                <span class="text-muted" style="font-size: 11px;">
+                  {% if op.operacoes_valor < 0 %}
+                    Destino: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                  {% else %}
+                    Origem: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                  {% endif %}
+                </span>
+              {% endif %}
+              {% if op.operacoes_parcela %}
+                <span class="badge badge-accent btn-xs" style="width: fit-content; margin-top: 4px;">{{ formata_parcela(op.operacoes_parcela) }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            {% if op.operacoes_categoria %}
+              <span class="badge badge-muted">{{ op.categoria_obj.categorias_nome if op.categoria_obj else 'Sem Categoria' }}</span>
+            {% endif %}
+          </td>
+          <td class="text-right font-bold {{ cor_valor(op.operacoes_valor) }}">
+            {{ formata_moeda(op.operacoes_valor) }}
+          </td>
+          <td>
+            <div class="flex gap-1 justify-end">
+              {% if not op.operacoes_efetivado %}
+              <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post">
+                <button type="submit" class="btn btn-success btn-xs" title="Efetivar">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+              </form>
+              {% endif %}
+              <button class="btn btn-ghost btn-xs" onclick="openEditOpModal('{{ op.operacoes_id }}', '{{ op.operacoes_descricao }}', '{{ op.operacoes_valor }}', '{{ op.operacoes_tipo }}', '{{ op.operacoes_data_lancamento }}', '{{ op.operacoes_categoria }}')" title="Editar">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')">
+                <button type="submit" class="btn btn-danger btn-xs" title="Excluir">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center text-muted p-6">Nenhum lançamento encontrado para este período.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Novo Lançamento -->
+<div class="modal-backdrop" id="modalNovoLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Novo Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalNovoLancamento')">&times;</button>
+    </div>
+    <form action="/lancamentos/inserir" method="post">
+      <input type="hidden" name="conta" value="{{ conta.conta_id }}">
+      
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="1" required> Receita
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="3" checked required> Despesa
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" class="form-control" placeholder="O que você comprou?" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" class="form-control" value="{{ hoje.isoformat() }}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Editar Lançamento -->
+<div class="modal-backdrop" id="modalEditarLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Editar Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarLancamento')">&times;</button>
+    </div>
+    <form id="formEditarOp" method="post">
+      <input type="hidden" name="conta" value="{{ conta.conta_id }}">
+      
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" id="edit_tipo_receita" value="1"> Receita
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" id="edit_tipo_despesa" value="3"> Despesa
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" id="edit_desc" class="form-control" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="edit_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" id="edit_data" class="form-control" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" id="edit_cat" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Atualizar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function openEditOpModal(id, desc, valor, tipo, data, cat) {
+    document.getElementById('formEditarOp').action = '/lancamentos/editar/' + id;
+    document.getElementById('edit_desc').value = desc;
+    document.getElementById('edit_valor').value = Math.abs(parseFloat(valor)).toFixed(2).replace('.', ',');
+    document.getElementById('edit_data').value = data;
+    document.getElementById('edit_cat').value = cat || "";
+    
+    if (tipo == "1") document.getElementById('edit_tipo_receita').checked = true;
+    else document.getElementById('edit_tipo_despesa').checked = true;
+    
+    openModal('modalEditarLancamento');
+  }
+</script>
+{% endblock %}

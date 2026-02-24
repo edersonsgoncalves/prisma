@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Fatura {{ fatura.cartao.nome_conta }}{% endblock %}
+{% block page_title %}Fatura: {{ fatura.cartao.nome_conta }}{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Vencimento: {{ mostra_data(fatura.data_vencimento) }}</h1>
+    <p>Compras e lançamentos neste ciclo de faturamento.</p>
+  </div>
+  <div class="badge {{ 'badge-info' if fatura.fechado else 'badge-warning' }}" style="font-size: 14px; padding: 6px 16px;">
+    {{ 'FECHADA' if fatura.fechado else 'ABERTA' }}
+  </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+  <div class="stat-card danger">
+    <div class="stat-label">Valor Total</div>
+    <div class="stat-value">{{ formata_moeda((fatura.valor_total | abs)) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Data de Fechamento</div>
+    <div class="stat-value" style="font-size: 18px;">{{ mostra_data(fatura.data_fechamento) }}</div>
+  </div>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Descrição</th>
+          <th class="text-right">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in operacoes %}
+        <tr>
+          <td>{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+          <td>
+            <div class="flex flex-col">
+              <span class="font-bold">{{ op.operacoes_descricao }}</span>
+              {% if op.operacoes_parcela %}
+                <span class="text-muted" style="font-size: 11px;">Parcela {{ formata_parcela(op.operacoes_parcela) }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="text-right font-bold text-danger">{{ formata_moeda(op.operacoes_valor) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-center p-6 text-muted">Nenhum lançamento nesta fatura.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

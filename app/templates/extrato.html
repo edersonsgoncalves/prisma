@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+
+{% block title %}Extrato Unificado{% endblock %}
+{% block page_title %}Extrato{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Movimentações</h1>
+    <p>Histórico de lançamentos para {{ mes_por_extenso(mes, ano) }}</p>
+  </div>
+  
+  <div class="flex gap-2">
+    <button class="btn btn-primary" onclick="openModal('modalNovoLancamento')">Novo Lançamento</button>
+  </div>
+</div>
+
+<!-- Resumo do Extrato -->
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+  <div class="stat-card">
+    <div class="stat-label">Saldo Anterior</div>
+    <div class="stat-value {{ cor_valor(saldo_anterior) }}">{{ formata_moeda(saldo_anterior) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Movimentação no Mês</div>
+    {% set mov_mes = operacoes | selectattr('operacoes_efetivado', 'equalto', 1) | sum(attribute='operacoes_valor') %}
+    <div class="stat-value {{ cor_valor(mov_mes) }}">{{ formata_moeda(mov_mes) }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Saldo Atual</div>
+    <div class="stat-value {{ cor_valor(saldo_anterior + mov_mes) }}">{{ formata_moeda(saldo_anterior + mov_mes) }}</div>
+  </div>
+</div>
+
+<!-- Barra de Filtros -->
+<div class="card mb-6">
+  <form id="filterForm" method="get" class="form-grid-2" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; gap: 1rem;">
+    <!-- Conta -->
+    <div class="form-group mb-0">
+      <label class="form-label" style="font-size: 11px;">Conta</label>
+      <select name="c" class="form-control form-control-sm" onchange="this.form.submit()">
+        <option value="">Todas as Contas</option>
+        {% for count_item in contas_todas %}
+        <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Categoria -->
+    <div class="form-group mb-0">
+      <label class="form-label" style="font-size: 11px;">Categoria</label>
+      <select name="cat" class="form-control form-control-sm" onchange="this.form.submit()">
+        <option value="">Todas as Categorias</option>
+        {% for category in categorias %}
+        <option value="{{ category.categorias_id }}" {{ 'selected' if cat_id == category.categorias_id or cat_id == category.categorias_id|string }}>
+          {% if category.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ category.categorias_nome }} {% else %} {{ category.categorias_nome }} {% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Status -->
+    <div class="form-group mb-0">
+      <label class="form-label" style="font-size: 11px;">Status</label>
+      <select name="status" class="form-control form-control-sm" onchange="this.form.submit()">
+        <option value="">Todos os Status</option>
+        <option value="1" {{ 'selected' if status_id == 1 or status_id == '1' }}>Efetivados</option>
+        <option value="0" {{ 'selected' if status_id == 0 or status_id == '0' }}>Pendentes</option>
+      </select>
+    </div>
+
+    <!-- Navegação de Período -->
+    <div class="form-group mb-0 flex items-center justify-between gap-2">
+       <div class="period-nav w-full">
+          {% set prev_m = 12 if mes == 1 else mes - 1 %}
+          {% set prev_y = ano - 1 if mes == 1 else ano %}
+          {% set next_m = 1 if mes == 12 else mes + 1 %}
+          {% set next_y = ano + 1 if mes == 12 else ano %}
+
+          <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ prev_m }}&y={{ prev_y }}" class="btn-icon btn-xs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </a>
+          <span style="font-size: 13px; font-weight: 600;">{{ mes_por_extenso(mes, ano) }}</span>
+          <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ next_m }}&y={{ next_y }}" class="btn-icon btn-xs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </a>
+       </div>
+    </div>
+    
+    <input type="hidden" name="m" value="{{ mes }}">
+    <input type="hidden" name="y" value="{{ ano }}">
+  </form>
+</div>
+
+<!-- Tabela de Lançamentos -->
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th width="40"></th>
+          <th>Data</th>
+          {% if not conta_id %}<th>Conta</th>{% endif %}
+          <th>Descrição</th>
+          <th>Categoria</th>
+          <th class="text-right">Valor</th>
+          <th width="120">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for op in operacoes %}
+        {% set is_efetivado = (op.operacoes_efetivado == 1) %}
+        {% set is_atrasado = (not is_efetivado and op.operacoes_data_lancamento < hoje) %}
+        <tr class="{% if is_efetivado %}op-efetivado{% else %}op-pendente{% endif %} {% if is_atrasado %}op-atrasada{% endif %}">
+          <td class="text-center">
+            {% if is_atrasado %}<div style="color: var(--danger); font-size: 10px; font-weight: 800; margin-bottom: 2px;">VENCIDO</div>{% endif %}
+            {% if op.operacoes_tipo == 1 %}
+              <svg width="14" height="14" class="text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+            {% elif op.operacoes_tipo == 3 %}
+              <svg width="14" height="14" class="text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+            {% else %}
+              <svg width="14" height="14" class="text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            {% endif %}
+          </td>
+          <td class="nowrap">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+          {% if not conta_id %}
+          <td>
+            <span class="badge badge-outline" style="font-size: 10px;">{{ op.conta.nome_conta }}</span>
+          </td>
+          {% endif %}
+          <td>
+            <div class="flex flex-col">
+              <span class="font-bold">{{ op.operacoes_descricao }}</span>
+              {% if op.operacoes_transf_rel %}
+                <span class="text-muted" style="font-size: 11px;">
+                  {% if op.operacoes_valor > 0 %}
+                    Origem: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                  {% else %}
+                    Destino: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                  {% endif %}
+                </span>
+              {% endif %}
+              {% if op.operacoes_parcela %}
+                <span class="badge badge-accent btn-xs" style="width: fit-content; margin-top: 4px;">{{ formata_parcela(op.operacoes_parcela) }}</span>
+              {% endif %}
+            </div>
+          </td>
+          <td>
+            {% if op.operacoes_categoria %}
+              <span class="badge badge-muted">{{ op.categoria_obj.categorias_nome if op.categoria_obj else 'Sem Categoria' }}</span>
+            {% endif %}
+          </td>
+          <td class="text-right font-bold {{ cor_valor(op.operacoes_valor) if op.operacoes_efetivado else '' }}">
+            {{ formata_moeda(op.operacoes_valor) }}
+          </td>
+          <td>
+            <div class="flex gap-2 justify-end">
+              {% if not op.operacoes_efetivado %}
+              <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post" style="display:inline;">
+                <button type="submit" class="btn btn-outline btn-xs text-success" title="Efetivar">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+              </form>
+              {% endif %}
+              
+              <button class="btn btn-outline btn-xs" title="Duplicar"
+                      data-id="{{ op.operacoes_id }}"
+                      data-desc="{{ op.operacoes_descricao }}"
+                      data-valor="{{ op.operacoes_valor }}"
+                      data-tipo="{{ op.operacoes_tipo }}"
+                      data-data="{{ op.operacoes_data_lancamento }}"
+                      data-cat="{{ op.operacoes_categoria or '' }}"
+                      data-conta="{{ op.operacoes_conta }}"
+                      onclick="openDuplicateModal(this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+
+              <button class="btn btn-outline btn-xs" title="Editar"
+                      data-id="{{ op.operacoes_id }}"
+                      data-desc="{{ op.operacoes_descricao }}"
+                      data-valor="{{ op.operacoes_valor }}"
+                      data-tipo="{{ op.operacoes_tipo }}"
+                      data-data="{{ op.operacoes_data_lancamento }}"
+                      data-cat="{{ op.operacoes_categoria or '' }}"
+                      data-conta="{{ op.operacoes_conta }}"
+                      onclick="openEditOpModal(this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              
+              <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:inline;">
+                <button type="submit" class="btn btn-outline btn-xs text-danger" title="Excluir">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="{{ 7 if not conta_id else 6 }}" class="text-center text-muted p-6">Nenhum lançamento encontrado para este período com os filtros aplicados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Removido <style> block pois foi movido para main.css -->
+
+<!-- Modal Novo Lançamento -->
+<div class="modal-backdrop" id="modalNovoLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Novo Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalNovoLancamento')">&times;</button>
+    </div>
+    <form action="/lancamentos/inserir" method="post">
+      <div class="form-group">
+        <label class="form-label">Conta</label>
+        <select name="conta" class="form-control" required>
+          {% for c in contas_todas %}
+          <option value="{{ c.conta_id }}" {{ 'selected' if conta_id == c.conta_id }}>{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="1" required> Receita
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="3" checked required> Despesa
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" class="form-control" placeholder="O que você comprou?" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" class="form-control" value="{{ hoje.isoformat() }}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Editar Lançamento -->
+<div class="modal-backdrop" id="modalEditarLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Editar Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarLancamento')">&times;</button>
+    </div>
+    <form id="formEditarOp" method="post">
+      <div class="form-group">
+        <label class="form-label">Conta</label>
+        <select name="conta" id="edit_conta" class="form-control" required>
+          {% for c in contas_todas %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" id="edit_tipo_receita" value="1"> Receita
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" id="edit_tipo_despesa" value="3"> Despesa
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" id="edit_desc" class="form-control" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="edit_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" id="edit_data" class="form-control" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" id="edit_cat" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Atualizar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function openEditOpModal(btn) {
+    const d = btn.dataset;
+    const modal = document.getElementById('modalEditarLancamento');
+    const form = document.getElementById('formEditarOp');
+    const title = modal.querySelector('.modal-title');
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    // Configura para EDIÇÃO
+    title.innerText = "Editar Lançamento";
+    submitBtn.innerText = "Atualizar";
+    form.action = '/lancamentos/editar/' + d.id;
+
+    // Popula campos
+    document.getElementById('edit_desc').value = d.desc;
+    document.getElementById('edit_valor').value = Math.abs(parseFloat(d.valor)).toFixed(2).replace('.', ',');
+    document.getElementById('edit_data').value = d.data;
+    document.getElementById('edit_cat').value = d.cat || "";
+    document.getElementById('edit_conta').value = d.conta || "";
+    
+    if (d.tipo == "1") document.getElementById('edit_tipo_receita').checked = true;
+    else document.getElementById('edit_tipo_despesa').checked = true;
+    
+    openModal('modalEditarLancamento');
+  }
+
+  function openDuplicateModal(btn) {
+    const d = btn.dataset;
+    const modal = document.getElementById('modalEditarLancamento');
+    const form = document.getElementById('formEditarOp');
+    const title = modal.querySelector('.modal-title');
+    const submitBtn = form.querySelector('button[type="submit"]');
+
+    // Configura para DUPLICAÇÃO (Criação de novo item)
+    title.innerText = "Duplicar Lançamento";
+    submitBtn.innerText = "Salvar como Novo";
+    form.action = '/lancamentos/inserir';
+
+    // Popula campos (adicionando "Cópia" na descrição)
+    document.getElementById('edit_desc').value = d.desc + " (Cópia)";
+    document.getElementById('edit_valor').value = Math.abs(parseFloat(d.valor)).toFixed(2).replace('.', ',');
+    document.getElementById('edit_data').value = d.data;
+    document.getElementById('edit_cat').value = d.cat || "";
+    document.getElementById('edit_conta').value = d.conta || "";
+    
+    if (d.tipo == "1") document.getElementById('edit_tipo_receita').checked = true;
+    else document.getElementById('edit_tipo_despesa').checked = true;
+    
+    openModal('modalEditarLancamento');
+  }
+</script>
+{% endblock %}

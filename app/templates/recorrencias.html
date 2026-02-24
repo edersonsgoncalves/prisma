@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Recorrências{% endblock %}
+{% block page_title %}Transações Recorrentes{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Recorrências</h1>
+    <p>Configure transações automáticas que se repetem periodicamente.</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modalNovaRec')">Nova Recorrência</button>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Frequência</th>
+          <th>Duração / Dias Úteis</th>
+          <th width="100" class="text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rec in recorrencias %}
+        <tr>
+          <td class="font-bold text-accent">{{ rec.frequencia | capitalize }}</td>
+          <td>
+            {% if rec.dias_uteis %}
+              <span class="badge badge-info">Ajustar para Dias Úteis</span>
+            {% else %}
+              <span class="badge badge-muted">Calendário Corrido</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <button class="btn btn-ghost btn-xs">Editar</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalNovaRec">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Configurar Recorrência</h2>
+      <button class="modal-close" onclick="closeModal('modalNovaRec')">&times;</button>
+    </div>
+    <form action="/recorrencias/nova" method="post">
+      <div class="form-group">
+        <label class="form-label">Frequência</label>
+        <select name="frequencia" class="form-control" required>
+          <option value="diario">Diário</option>
+          <option value="semanal">Semanal</option>
+          <option value="mensal" selected>Mensal</option>
+          <option value="anual">Anual</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          <input type="checkbox" name="dias_uteis" value="1"> Ajustar lançamentos apenas para dias úteis?
+        </label>
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Criar Recorrência</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

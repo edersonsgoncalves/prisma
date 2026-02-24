@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Nova Receita{% endblock %}
+{% block page_title %}Lançar Nova Receita{% endblock %}
+
+{% block content %}
+<div class="card max-w-2xl mx-auto">
+  <form action="/lancamentos/inserir" method="post">
+    <input type="hidden" name="tipo" value="1">
+    
+    <div class="form-group">
+      <label class="form-label">Descrição da Receita</label>
+      <input type="text" name="descricao" class="form-control" placeholder="Ex: Salário" required autofocus>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Valor</label>
+        <div class="flex items-center gap-2">
+          <span class="text-success font-bold">+ R$</span>
+          <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data</label>
+        <input type="date" name="data" class="form-control" value="{{ hoje }}" required>
+      </div>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Conta de Destino</label>
+        <select name="conta" class="form-control" required>
+          {% for c in contas %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias if cat.categorias_classe in [0, 1, None] %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="flex justify-end gap-3">
+      <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
+      <button type="submit" class="btn btn-primary">Salvar Receita</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .switch-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+  }
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #444;
+    transition: .3s;
+    border-radius: 20px;
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: var(--primary);
+  }
+  input:checked + .slider:before {
+    transform: translateX(16px);
+  }
+  .switch-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #888;
+    transition: .3s;
+  }
+  input:checked ~ .label-sim { color: var(--success); }
+  input:not(:checked) ~ .label-nao { color: white; }
+</style>
+{% endblock %}
+{% block title %}Nova Despesa{% endblock %}
+{% block page_title %}Lançar Nova Despesa{% endblock %}
+
+{% block content %}
+<div class="card max-w-2xl mx-auto">
+  <form action="/lancamentos/inserir" method="post">
+    <input type="hidden" name="tipo" value="3">
+    
+    <div class="form-group">
+      <label class="form-label">Descrição da Despesa</label>
+      <input type="text" name="descricao" class="form-control" placeholder="Ex: Mercado Mensal" required autofocus>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Valor</label>
+        <div class="flex items-center gap-2">
+          <span class="text-danger font-bold">- R$</span>
+          <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data</label>
+        <input type="date" name="data" class="form-control" value="{{ hoje }}" required>
+      </div>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Conta de Saída</label>
+        <select name="conta" class="form-control" required>
+          {% for c in contas %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias if cat.categorias_classe in [0, 3, None] %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <input type="hidden" name="fatura" id="input_fatura" value="">
+
+    <div class="form-group mb-6 flex items-center gap-2">
+      <label class="form-label mb-0" style="margin-right: 4px;">Despesa no Cartão de Crédito?</label>
+      <label class="switch-wrapper">
+        <span class="switch-label label-nao">não</span>
+        <div class="switch">
+          <input type="checkbox" id="checkCartao" name="uso_cartao" onchange="handleToggle()">
+          <span class="slider"></span>
+        </div>
+        <span class="switch-label label-sim">sim</span>
+      </label>
+    </div>
+
+    <!-- Modal Selecionar Cartão -->
+    <div class="modal-backdrop" id="modalSelecionarCartao">
+      <div class="modal max-w-sm">
+        <div class="modal-header">
+          <h2 class="modal-title">Escolha o Cartão</h2>
+          <button type="button" class="modal-close" onclick="closeModal('modalSelecionarCartao')">&times;</button>
+        </div>
+        <div class="p-4 flex flex-col gap-3">
+          {% for card in cartoes %}
+          <button type="button" class="btn btn-outline w-full text-left flex justify-between items-center" 
+                  onclick="selectCardAndSubmit('{{ card.conta_id }}')">
+            <span>{{ card.nome_conta }}</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="flex justify-end gap-3">
+      <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
+      <button type="button" class="btn btn-primary" onclick="handleSave()">Salvar Despesa</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function handleToggle() {
+    const isCartao = document.getElementById('checkCartao').checked;
+    const selectConta = document.querySelector('select[name="conta"]');
+    const labelConta = selectConta.previousElementSibling;
+    
+    if (isCartao) {
+      selectConta.disabled = true;
+      selectConta.style.opacity = '0.5';
+      labelConta.style.opacity = '0.5';
+    } else {
+      selectConta.disabled = false;
+      selectConta.style.opacity = '1';
+      labelConta.style.opacity = '1';
+    }
+  }
+
+  function handleSave() {
+    const isCartao = document.getElementById('checkCartao').checked;
+    const form = document.querySelector('form');
+    
+    if (!form.descricao.value || !form.valor.value || !form.data.value) {
+      form.reportValidity();
+      return;
+    }
+
+    if (isCartao) {
+      openModal('modalSelecionarCartao');
+    } else {
+      document.getElementById('input_fatura').value = "";
+      form.submit();
+    }
+  }
+
+  function selectCardAndSubmit(cardId) {
+    document.getElementById('input_fatura').value = cardId;
+    document.querySelector('form').submit();
+  }
+</script>
+{% endblock %}

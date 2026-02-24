@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Cartões de Crédito{% endblock %}
+{% block page_title %}Cartões de Crédito{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Faturas e Cartões</h1>
+  <p>Acompanhe seus gastos e datas de vencimento.</p>
+</div>
+
+<div class="stats-grid">
+  {% for fatura in faturas %}
+  <div class="card flex flex-col justify-between" style="min-height: 160px;">
+    <div class="flex justify-between items-start">
+      <div>
+        <div class="badge badge-warning mb-2">Vence em {{ mostra_data(fatura.data_vencimento) }}</div>
+        <h3 style="font-size: 16px; font-weight: 700;">{{ fatura.cartao.nome_conta }}</h3>
+      </div>
+      <div class="badge {{ 'badge-success' if fatura.fechado else 'badge-warning' }}">
+        {{ 'Fechada' if fatura.fechado else 'Aberta' }}
+      </div>
+    </div>
+    
+    <div class="mt-4">
+      <div class="stat-label">Valor da Fatura</div>
+      <div class="stat-value text-danger">{{ formata_moeda(fatura.valor_total) }}</div>
+      <div class="stat-sub">Fechamento: {{ mostra_data(fatura.data_fechamento) }}</div>
+    </div>
+
+    <div class="mt-4">
+      <a href="/faturas/{{ fatura.fatura_id }}" class="btn btn-ghost btn-sm w-full">Ver Detalhes</a>
+    </div>
+  </div>
+  {% else %}
+  <div class="card text-center p-8">
+    <p class="text-muted">Nenhuma fatura encontrada.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
