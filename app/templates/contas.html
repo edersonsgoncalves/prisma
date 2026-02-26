@@ -15,106 +15,57 @@
   </button>
 </div>
 
-<div class="stats-grid">
-  {% for conta in contas if conta.tipo_conta != 4 %}
-  <div class="card flex flex-col justify-between" style="min-height: 140px;">
-    <div class="flex justify-between items-start">
-      <div>
-        <div class="badge badge-accent mb-2">
-          {% if conta.tipo_conta == 1 %}Conta Corrente
-          {% elif conta.tipo_conta == 2 %}Poupança
-          {% elif conta.tipo_conta == 3 %}Carteira
-          {% else %}Outros{% endif %}
-        </div>
-        <h3 style="font-size: 16px; font-weight: 700;">{{ conta.nome_conta }}</h3>
-      </div>
-      <button class="btn-icon btn-xs" onclick="openEditModal('{{ conta.conta_id }}', '{{ conta.nome_conta }}', '{{ conta.tipo_conta }}', '{{ conta.contas_limite }}')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      </button>
-    </div>
+{# Filtramos apenas o que não é cartão e agrupamos por tipo_conta #}
+{% for tipo, grupo_contas in contas | selectattr('tipo_conta', 'ne', 4) | groupby('tipo_conta') %}
     
-    <div class="mt-4">
-      <div class="stat-label">Saldo Atual</div>
-      <div class="stat-value {{ cor_valor(saldos.get(conta.conta_id, 0)) }}">
-        {{ formata_moeda(saldos.get(conta.conta_id, 0)) }}
-      </div>
-      {% if conta.contas_limite %}
-      <div class="stat-sub">Limite: {{ formata_moeda(conta.contas_limite) }}</div>
-      {% endif %}
+    <div class="section-divider mt-8 mb-4">
+        <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">
+            {% if tipo == 1 %}🏦 Contas Correntes
+            {% elif tipo == 2 %}💵 Carteira / Dinheiro
+            {% elif tipo == 4 %}💳 Cartões de Crédito
+            {% elif tipo == 3 %}🏦 Financeiro
+            {% elif tipo == 5 %}💰 Investimentos
+            {% else %}📂 Outros{% endif %}
+        </h2>
+        <hr style="border: 0; border-top: 2px solid var(--border-color); margin-top: 8px;">
     </div>
 
-    <div class="mt-4">
-      <a href="/extrato?c={{ conta.conta_id }}" class="btn btn-ghost btn-sm w-full">Ver Extrato</a>
-    </div>
-  </div>
-  {% endfor %}
-</div>
+    <div class="stats-grid">
+      {% for conta in grupo_contas %}
+      <div class="card flex flex-col justify-between" style="min-height: 140px;">
+        <div class="flex justify-between items-start">
+          <div>
+            <h3 style="font-size: 16px; font-weight: 700;">{{ conta.nome_conta }}</h3>
+          </div>
+          <button class="btn-icon btn-xs" onclick="openEditModal('{{ conta.conta_id }}', '{{ conta.nome_conta }}', '{{ conta.tipo_conta }}', '{{ conta.contas_limite }}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+        
+        <div class="mt-4">
+          <div class="stat-label">Saldo Atual</div>
+          <div class="stat-value {{ cor_valor(saldos.get(conta.conta_id, 0)) }}">
+            {{ formata_moeda(saldos.get(conta.conta_id, 0)) }}
+          </div>
+          {% if conta.contas_limite %}
+          <div class="stat-sub">Limite: {{ formata_moeda(conta.contas_limite) }}</div>
+          {% endif %}
+        </div>
 
-<!-- ═══ MODAL NOVA CONTA ═══ -->
-<div class="modal-backdrop" id="modalNovaConta">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 class="modal-title">Nova Conta</h2>
-      <button class="modal-close" onclick="closeModal('modalNovaConta')">&times;</button>
+        <div class="mt-4">
+          <a href="/extrato?c={{ conta.conta_id }}" class="btn btn-ghost btn-sm w-full">Ver Extrato</a>
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    <form action="/contas/nova" method="post">
-      <div class="form-group">
-        <label class="form-label">Nome da Conta</label>
-        <input type="text" name="nome" class="form-control" placeholder="Ex: Itaú Personalité" required>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label class="form-label">Tipo</label>
-          <select name="tipo" class="form-control" required>
-            <option value="1">Conta Corrente</option>
-            <option value="2">Poupança</option>
-            <option value="3">Carteira / Dinheiro</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Limite (Opcional)</label>
-          <input type="text" name="limite" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)">
-        </div>
-      </div>
-      <div class="flex justify-end mt-4">
-        <button type="submit" class="btn btn-primary">Salvar Conta</button>
-      </div>
-    </form>
-  </div>
-</div>
 
-<!-- ═══ MODAL EDITAR CONTA ═══ -->
-<div class="modal-backdrop" id="modalEditarConta">
-  <div class="modal">
-    <div class="modal-header">
-      <h2 class="modal-title">Editar Conta</h2>
-      <button class="modal-close" onclick="closeModal('modalEditarConta')">&times;</button>
+{% else %}
+    <div class="card p-12 text-center text-muted">
+        Nenhuma conta cadastrada até o momento.
     </div>
-    <form id="formEditarConta" method="post">
-      <div class="form-group">
-        <label class="form-label">Nome da Conta</label>
-        <input type="text" name="nome" id="edit_nome" class="form-control" required>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-group">
-          <label class="form-label">Tipo</label>
-          <select name="tipo" id="edit_tipo" class="form-control" required>
-            <option value="1">Conta Corrente</option>
-            <option value="2">Poupança</option>
-            <option value="3">Carteira / Dinheiro</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Limite</label>
-          <input type="text" name="limite" id="edit_limite" class="form-control" onkeyup="formatCurrency(this)">
-        </div>
-      </div>
-      <div class="flex justify-end mt-4">
-        <button type="submit" class="btn btn-primary">Atualizar Conta</button>
-      </div>
-    </form>
-  </div>
-</div>
+{% endfor %}
+
+
 
 {% endblock %}
 

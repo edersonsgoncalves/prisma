@@ -42,36 +42,48 @@ async def listar_contas(
 async def nova_conta(
     nome: str = Form(...),
     tipo: int = Form(...),
-    moeda: str = Form(default="BRL"),
-    limite: float = Form(default=0),
+    moeda: int = Form(default=1),
+    limite: str = Form(default="0,00"), 
     fechamento: int = Form(default=0),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
+    # Trata a string do limite (ex: "1.250,50" -> "1250.50")
+    try:
+        limite_limpo = limite.replace('.', '').replace(',', '.')
+        limite_float = float(limite_limpo)
+    except (ValueError, AttributeError):
+        limite_float = 0.0
+
     conta = ContaBancaria(
         nome_conta=nome, tipo_conta=tipo,
-        conta_moeda=moeda, contas_limite=limite,
+        conta_moeda=moeda, contas_limite=limite_float,
         contas_cartao_fechamento=fechamento,
     )
     db.add(conta); db.commit()
-    return RedirectResponse(url="/contas", status_code=302)
-
+    return RedirectResponse(url="/contas", status_code=303)
 
 @router.post("/editar/{conta_id}")
 async def editar_conta(
     conta_id: int,
     nome: str = Form(...),
     tipo: int = Form(...),
-    moeda: str = Form(default="BRL"),
-    limite: float = Form(default=0),
+    moeda: int = Form(default=1),
+    limite: str = Form(default="0,00"),
     fechamento: int = Form(default=0),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
+    # Trata a string do limite (ex: "1.250,50" -> "1250.50")
+    try:
+        limite_limpo = limite.replace('.', '').replace(',', '.')
+        limite_float = float(limite_limpo)
+    except (ValueError, AttributeError):
+        limite_float = 0.0
     conta = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_id).first()
     if conta:
         conta.nome_conta = nome; conta.tipo_conta = tipo
-        conta.conta_moeda = moeda; conta.contas_limite = limite
+        conta.conta_moeda = moeda; conta.contas_limite = limite_float
         conta.contas_cartao_fechamento = fechamento
         db.commit()
     return RedirectResponse(url="/contas", status_code=302)
