@@ -142,7 +142,7 @@ async def extrato_unificado(
         Categoria.categorias_pai_id.isnot(None), 
         Categoria.categorias_nome
     ).all()
-    contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).all()
+    contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).order_by(ContaBancaria.nome_conta.asc()).all()
 
     return templates.TemplateResponse("extrato.html", {
         "request": request,
@@ -159,3 +159,97 @@ async def extrato_unificado(
         "status_id": status,
         "hoje": date.today(),
     })
+
+
+@router.get("/conta/{conta_id}", response_class=HTMLResponse)
+async def extrato_por_conta(
+    request: Request,
+    conta_id: int,
+    m: int = Query(default=date.today().month, description="Mês"),
+    y: int = Query(default=date.today().year, description="Ano"),
+    sessao: dict = Depends(require_login),
+    db: Session = Depends(get_db),
+):
+    conta = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_id).first()
+    if not conta:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/extrato", status_code=303)
+
+    hoje = date.today()
+    is_hoje_periodo = (m == hoje.month and y == hoje.year)
+
+    from sqlalchemy import and_, or_
+    query = db.query(Operacao).options(joinedload(Operacao.conta)).filter(
+        Operacao.operacoes_conta == conta_id,
+        Operacao.operacoes_validacao == 1,
+    )
+
+    if is_hoje_periodo:
+        query = query.filter(
+            or_(
+                and_(
+                    extract('month', Operacao.operacoes_data_lancamento) == m,
+                    extract('year', Operacao.operacoes_data_lancamento) == y,
+                ),
+                and_(
+                    func.coalesce(Operacao.operacoes_efetivado, 0) != 1,
+                    Operacao.operacoes_data_lancamento < date(y, m, 1),
+                )
+            )
+        )
+    else:
+        query = query.filter(
+            extract('month', Operacao.operacoes_data_lancamento) == m,
+            extract('year', Operacao.operacoes_data_lancamento) == y,
+        )
+
+    is_atrasado = case(
+        (and_(
+            func.coalesce(Operacao.operacoes_efetivado, 0) != 1,
+            Operacao.operacoes_data_lancamento < hoje,
+        ), 1),
+        else_=0
+    )
+    operacoes = query.order_by(is_atrasado, Operacao.operacoes_data_lancamento, Operacao.operacoes_id).all()
+
+    # Saldo anterior
+    saldo_anterior = db.query(func.sum(Operacao.operacoes_valor)).filter(
+        Operacao.operacoes_conta == conta_id,
+        Operacao.operacoes_efetivado == 1,
+        Operacao.operacoes_validacao == 1,
+        Operacao.operacoes_data_lancamento < date(y, m, 1),
+    ).scalar() or 0
+
+    # Contas destino de transferências
+    ids_transf = [op.operacoes_transf_rel for op in operacoes if op.operacoes_transf_rel]
+    contas_transf = {}
+    if ids_transf:
+        ops_transf = (
+            db.query(Operacao.operacoes_id, ContaBancaria.nome_conta)
+            .join(ContaBancaria, Operacao.operacoes_conta == ContaBancaria.conta_id)
+            .filter(Operacao.operacoes_id.in_(ids_transf))
+            .all()
+        )
+        contas_transf = {op_id: nome for op_id, nome in ops_transf}
+
+    categorias = db.query(Categoria).order_by(
+        func.coalesce(Categoria.categorias_pai_id, Categoria.categorias_id),
+        Categoria.categorias_pai_id.isnot(None),
+        Categoria.categorias_nome
+    ).all()
+    contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).all()
+
+    return templates.TemplateResponse("extrato_conta.html", {
+        "request": request,
+        "sessao": sessao,
+        "conta": conta,
+        "operacoes": operacoes,
+        "saldo_anterior": saldo_anterior,
+        "contas_transf": contas_transf,
+        "categorias": categorias,
+        "contas_todas": contas_todas,
+        "mes": m,
+        "ano": y,
+        "hoje": date.today(),
+    })
+
