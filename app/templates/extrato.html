@@ -84,6 +84,13 @@
           <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ next_m }}&y={{ next_y }}" class="btn-icon btn-xs">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </a>
+          {% if mes != hoje.month or ano != hoje.year %}
+
+            <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ hoje.month }}&y={{ hoje.year }}" class="btn-icon btn-xs" title="Ir para hoje">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            </a>
+
+          {% endif %}
        </div>
     </div>
     
@@ -177,12 +184,10 @@
 
               <button class="btn btn-outline btn-xs" title="Editar"
                       data-id="{{ op.operacoes_id }}"
-                      data-desc="{{ op.operacoes_descricao }}"
-                      data-valor="{{ op.operacoes_valor }}"
                       data-tipo="{{ op.operacoes_tipo }}"
-                      data-data="{{ op.operacoes_data_lancamento }}"
-                      data-cat="{{ op.operacoes_categoria or '' }}"
-                      data-conta="{{ op.operacoes_conta }}"
+                      data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                      data-parcela="{{ op.operacoes_parcela or '' }}"
+                      data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
                       onclick="openEditOpModal(this)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
@@ -263,6 +268,22 @@
           {% endfor %}
         </select>
       </div>
+      
+      <!-- Efetivado -->
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="novo_efetivado_check" onchange="toggleDataEfetivado('novo')">
+            <span>Já efetivado</span>
+          </label>
+          <div id="novo_data_efetivado_wrap" style="display:none">
+            <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
+            <input type="date" name="data_efetivado" id="novo_data_efetivado" class="form-control">
+          </div>
+        </div>
+        <input type="hidden" name="efetivado" id="novo_efetivado_val" value="0">
+      </div>
 
       <div class="flex justify-end mt-4">
         <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
@@ -271,14 +292,22 @@
   </div>
 </div>
 
-<!-- Modal Editar Lançamento -->
+<!-- Modal Editar Lançamento (Inteligente) -->
 <div class="modal-backdrop" id="modalEditarLancamento">
   <div class="modal">
     <div class="modal-header">
-      <h2 class="modal-title">Editar Lançamento</h2>
+      <h2 class="modal-title" id="editModalTitle">Editar Lançamento</h2>
       <button class="modal-close" onclick="closeModal('modalEditarLancamento')">&times;</button>
     </div>
-    <form id="formEditarOp" method="post">
+
+    <!-- Indicador de carregamento -->
+    <div id="editModalLoading" class="flex justify-center p-6" style="display:none!important">
+      <span class="text-muted">Carregando...</span>
+    </div>
+
+    <!-- Seção: Receita / Despesa -->
+    <form id="formEditarOpRD" method="post" style="display:none">
+      <input type="hidden" name="escopo" id="edit_escopo_rd" value="so_este">
       <div class="form-group">
         <label class="form-label">Conta</label>
         <select name="conta" id="edit_conta" class="form-control" required>
@@ -287,7 +316,6 @@
           {% endfor %}
         </select>
       </div>
-      
       <div class="form-group">
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
@@ -299,12 +327,10 @@
           </label>
         </div>
       </div>
-
       <div class="form-group">
         <label class="form-label">Descrição</label>
         <input type="text" name="descricao" id="edit_desc" class="form-control" required>
       </div>
-
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Valor</label>
@@ -315,7 +341,6 @@
           <input type="date" name="data" id="edit_data" class="form-control" required>
         </div>
       </div>
-
       <div class="form-group">
         <label class="form-label">Categoria</label>
         <select name="categoria" id="edit_cat" class="form-control">
@@ -327,9 +352,90 @@
           {% endfor %}
         </select>
       </div>
-
+      <!-- Efetivado -->
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="edit_efetivado_check" onchange="toggleDataEfetivado('edit')">
+            <span>Já efetivado</span>
+          </label>
+          <div id="edit_data_efetivado_wrap" style="display:none">
+            <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
+            <input type="date" name="data_efetivado" id="edit_data_efetivado" class="form-control">
+          </div>
+        </div>
+        <input type="hidden" name="efetivado" id="edit_efetivado_val" value="0">
+      </div>
+      <!-- Escopo (parcelado/recorrente) -->
+      <div id="edit_escopo_section_rd" class="form-group" style="display:none">
+        <label class="form-label">Alterar lançamentos</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo" value="so_este" onchange="document.getElementById('edit_escopo_rd').value=this.value"> Apenas este
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo" value="subsequentes" checked onchange="document.getElementById('edit_escopo_rd').value=this.value"> Este e todos os subsequentes
+          </label>
+        </div>
+      </div>
       <div class="flex justify-end mt-4">
         <button type="submit" class="btn btn-primary">Atualizar</button>
+      </div>
+    </form>
+
+    <!-- Seção: Transferência -->
+    <form id="formEditarTransf" method="post" style="display:none">
+      <input type="hidden" name="escopo" id="edit_escopo_transf" value="so_este">
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" id="edit_transf_desc" class="form-control" required>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="edit_transf_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" id="edit_transf_data" class="form-control" required>
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Conta Origem</label>
+          <select name="conta_origem" id="edit_transf_origem" class="form-control" required>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Conta Destino</label>
+          <select name="conta_destino" id="edit_transf_destino" class="form-control" required>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <!-- Efetivado (transferência) -->
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="edit_transf_efetivado_check" onchange="toggleDataEfetivado('edit_transf')">
+            <span>Já efetivado</span>
+          </label>
+          <div id="edit_transf_data_efetivado_wrap" style="display:none">
+            <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
+            <input type="date" name="data_efetivado" id="edit_transf_data_efetivado" class="form-control">
+          </div>
+        </div>
+        <input type="hidden" name="efetivado" id="edit_transf_efetivado_val" value="0">
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
       </div>
     </form>
   </div>
@@ -339,53 +445,120 @@
 
 {% block extra_scripts %}
 <script>
-  function openEditOpModal(btn) {
+  function toggleDataEfetivado(prefix) {
+    const check = document.getElementById(prefix + '_efetivado_check');
+    const wrap = document.getElementById(prefix + '_data_efetivado_wrap');
+    const hidden = document.getElementById(prefix + '_efetivado_val');
+    if (check.checked) {
+      wrap.style.display = '';
+      hidden.value = '1';
+      const dateField = document.getElementById(prefix + '_data_efetivado');
+      if (!dateField.value) dateField.value = new Date().toISOString().split('T')[0];
+    } else {
+      wrap.style.display = 'none';
+      hidden.value = '0';
+    }
+  }
+
+  function _setEfetivado(prefix, efetivado, dataEfetivado) {
+    const check = document.getElementById(prefix + '_efetivado_check');
+    const wrap = document.getElementById(prefix + '_data_efetivado_wrap');
+    const hidden = document.getElementById(prefix + '_efetivado_val');
+    const dateField = document.getElementById(prefix + '_data_efetivado');
+    check.checked = !!efetivado;
+    hidden.value = efetivado ? '1' : '0';
+    if (efetivado) {
+      wrap.style.display = '';
+      dateField.value = dataEfetivado || new Date().toISOString().split('T')[0];
+    } else {
+      wrap.style.display = 'none';
+      dateField.value = '';
+    }
+  }
+
+  async function openEditOpModal(btn) {
     const d = btn.dataset;
-    const modal = document.getElementById('modalEditarLancamento');
-    const form = document.getElementById('formEditarOp');
-    const title = modal.querySelector('.modal-title');
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const opId = d.id;
+    const isTransf = d.tipo == "4" || d.transfRel;
 
-    // Configura para EDIÇÃO
-    title.innerText = "Editar Lançamento";
-    submitBtn.innerText = "Atualizar";
-    form.action = '/lancamentos/editar/' + d.id;
-
-    // Popula campos
-    document.getElementById('edit_desc').value = d.desc;
-    document.getElementById('edit_valor').value = Math.abs(parseFloat(d.valor)).toFixed(2).replace('.', ',');
-    document.getElementById('edit_data').value = d.data;
-    document.getElementById('edit_cat').value = d.cat || "";
-    document.getElementById('edit_conta').value = d.conta || "";
-    
-    if (d.tipo == "1") document.getElementById('edit_tipo_receita').checked = true;
-    else document.getElementById('edit_tipo_despesa').checked = true;
-    
+    document.getElementById('editModalTitle').innerText = isTransf ? 'Editar Transferência' : 'Editar Lançamento';
+    document.getElementById('editModalLoading').style.display = 'flex';
+    document.getElementById('formEditarOpRD').style.display = 'none';
+    document.getElementById('formEditarTransf').style.display = 'none';
     openModal('modalEditarLancamento');
+
+    try {
+      const resp = await fetch(`/lancamentos/editar/${opId}`);
+      const data = await resp.json();
+
+      if (data.tipo == 4 || data.transf_rel) {
+        // === TRANSFERÊNCIA ===
+        const form = document.getElementById('formEditarTransf');
+        form.action = `/lancamentos/editar-transferencia/${opId}`;
+        document.getElementById('edit_transf_desc').value = data.descricao || '';
+        document.getElementById('edit_transf_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+        document.getElementById('edit_transf_data').value = data.data || '';
+        document.getElementById('edit_transf_origem').value = data.conta || '';
+        document.getElementById('edit_transf_destino').value = data.conta_destino || '';
+        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado);
+        form.style.display = '';
+      } else {
+        // === RECEITA / DESPESA ===
+        const form = document.getElementById('formEditarOpRD');
+        form.action = `/lancamentos/editar/${opId}`;
+        document.getElementById('edit_desc').value = data.descricao || '';
+        document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+        document.getElementById('edit_data').value = data.data || '';
+        document.getElementById('edit_cat').value = data.categoria || '';
+        document.getElementById('edit_conta').value = data.conta || '';
+        if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
+        else document.getElementById('edit_tipo_despesa').checked = true;
+        _setEfetivado('edit', data.efetivado, data.data_efetivado);
+
+        // Escopo: mostrar se parcelado ou recorrente
+        const escopoSection = document.getElementById('edit_escopo_section_rd');
+        if (data.parcela || data.recorrencia) {
+          escopoSection.style.display = '';
+          form.querySelectorAll('[name="escopo"]').forEach(r => { r.checked = (r.value === 'so_este'); });
+          document.getElementById('edit_escopo_rd').value = 'so_este';
+        } else {
+          escopoSection.style.display = 'none';
+          document.getElementById('edit_escopo_rd').value = 'so_este';
+        }
+        form.style.display = '';
+      }
+    } catch(e) {
+      console.error('Erro ao carregar lançamento:', e);
+    } finally {
+      document.getElementById('editModalLoading').style.display = 'none';
+    }
   }
 
   function openDuplicateModal(btn) {
     const d = btn.dataset;
     const modal = document.getElementById('modalEditarLancamento');
-    const form = document.getElementById('formEditarOp');
     const title = modal.querySelector('.modal-title');
-    const submitBtn = form.querySelector('button[type="submit"]');
 
-    // Configura para DUPLICAÇÃO (Criação de novo item)
-    title.innerText = "Duplicar Lançamento";
-    submitBtn.innerText = "Salvar como Novo";
+    title.innerText = 'Duplicar Lançamento';
+    document.getElementById('editModalLoading').style.display = 'none';
+    document.getElementById('formEditarTransf').style.display = 'none';
+
+    const form = document.getElementById('formEditarOpRD');
     form.action = '/lancamentos/inserir';
+    document.getElementById('edit_escopo_section_rd').style.display = 'none';
+    document.getElementById('edit_escopo_rd').value = 'so_este';
+    _setEfetivado('edit', 0, null);
 
-    // Popula campos (adicionando "Cópia" na descrição)
-    document.getElementById('edit_desc').value = d.desc + " (Cópia)";
+    document.getElementById('edit_desc').value = d.desc + ' (Cópia)';
     document.getElementById('edit_valor').value = Math.abs(parseFloat(d.valor)).toFixed(2).replace('.', ',');
     document.getElementById('edit_data').value = d.data;
-    document.getElementById('edit_cat').value = d.cat || "";
-    document.getElementById('edit_conta').value = d.conta || "";
-    
-    if (d.tipo == "1") document.getElementById('edit_tipo_receita').checked = true;
+    document.getElementById('edit_cat').value = d.cat || '';
+    document.getElementById('edit_conta').value = d.conta || '';
+
+    if (d.tipo == '1') document.getElementById('edit_tipo_receita').checked = true;
     else document.getElementById('edit_tipo_despesa').checked = true;
-    
+
+    form.style.display = '';
     openModal('modalEditarLancamento');
   }
 </script>
