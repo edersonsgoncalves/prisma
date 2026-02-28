@@ -147,7 +147,7 @@ async def extrato_unificado(
     return templates.TemplateResponse("extrato.html", {
         "request": request,
         "sessao": sessao,
-        "conta_id": c,
+        "conta_id": c_id,
         "operacoes": operacoes,
         "saldo_anterior": saldo_anterior,
         "contas_transf": contas_transf,

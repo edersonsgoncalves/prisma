@@ -157,6 +157,7 @@ class Operacao(Base):
     operacoes_projeto: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("projetos.projeto_id"), nullable=True
     )
+    operacoes_grupo_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     # Relacionamentos
     conta: Mapped[Optional[ContaBancaria]] = relationship(back_populates="operacoes")
