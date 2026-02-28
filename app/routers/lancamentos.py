@@ -1,9 +1,13 @@
 from datetime import date, datetime, timedelta
 from typing import Optional
 from calendar import monthrange
+import uuid
+from dateutil.relativedelta import relativedelta
 
 from fastapi import APIRouter, Request, Depends, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.encoders import jsonable_encoder
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -132,6 +136,13 @@ async def inserir_transferencia(
     parcela_atual: Optional[int] = Form(default=None),
     parcela_total: Optional[int] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
+    efetivado: int = Form(default=0),
+    data_efetivado: Optional[str] = Form(default=None),
+    repetir: Optional[str] = Form(default=None),
+    modo_repeticao: Optional[str] = Form(default="parcelado"),
+    num_parcelas: Optional[int] = Form(default=2),
+    frequencia: Optional[str] = Form(default="mensal"),
+    ocorrencias: Optional[int] = Form(default=12),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -165,34 +176,77 @@ async def inserir_transferencia(
     if fat_id:
         final_fat_id = get_or_create_fatura(db, conta, dt_operacao)
 
-    op_saida = Operacao(
-        operacoes_data_lancamento=dt_operacao,
-        operacoes_descricao=descricao,
-        operacoes_conta=conta,
-        operacoes_valor=-valor_final,
-        operacoes_tipo="4",
-        operacoes_fatura=final_fat_id,
-        operacoes_parcela=parcela_str,
-        operacoes_efetivado=0,
-        operacoes_validacao=1,
-    )
-    op_entrada = Operacao(
-        operacoes_data_lancamento=dt_operacao,
-        operacoes_descricao=descricao,
-        operacoes_conta=conta_destino,
-        operacoes_valor=valor_final,
-        operacoes_tipo="4",
-        operacoes_fatura=final_fat_id,
-        operacoes_parcela=parcela_str,
-        operacoes_efetivado=0,
-        operacoes_validacao=1,
-    )
-    db.add(op_saida); db.add(op_entrada); db.flush()
-    op_saida.operacoes_transf_rel = op_entrada.operacoes_id
-    op_entrada.operacoes_transf_rel = op_saida.operacoes_id
+    dt_efetivado = None
+    if efetivado:
+        if data_efetivado:
+            dt_efetivado = datetime.fromisoformat(data_efetivado)
+        else:
+            dt_efetivado = datetime.now()
 
-    # Log da inserção
-    log_evento(db, "INSERT", "TRANSFERÊNCIA", op_saida.operacoes_id, f"'{descricao}' de <b>R$ {valor_final}</b> de <b>{nome_origem}</b> para <b>{nome_destino}</b>", sessao.get("id"))
+    grupo_id = f"TRF-{uuid.uuid4().hex[:10]}"
+    
+    # Se o parâmetro repetir vier como string "on" (checkbox), converte para bool
+    is_repetir = repetir == "on" or repetir == "1" or repetir is True
+    
+    repeticoes = 1
+    if repetir:
+        if modo_repeticao == "parcelado":
+            repeticoes = num_parcelas
+        else:
+            repeticoes = ocorrencias
+
+    for i in range(repeticoes):
+        curr_dt = dt_operacao
+        if i > 0:
+            if modo_repeticao == "parcelado" or frequencia == "mensal":
+                curr_dt = dt_operacao + relativedelta(months=i)
+            elif frequencia == "semanal":
+                curr_dt = dt_operacao + timedelta(weeks=i)
+            elif frequencia == "anual":
+                curr_dt = dt_operacao + relativedelta(years=i)
+        
+        curr_parcela = None
+        if modo_repeticao == "parcelado":
+            curr_parcela = f"{i+1:03d}.{num_parcelas:03d}"
+        elif parcela_str:
+            curr_parcela = parcela_str
+
+        # Define data_efetivado apenas para o primeiro da série se for o caso
+        curr_efetivado = efetivado if i == 0 else 0
+        curr_dt_efetivado = dt_efetivado if i == 0 else None
+
+        op_saida = Operacao(
+            operacoes_data_lancamento=curr_dt,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta,
+            operacoes_valor=-valor_final,
+            operacoes_tipo="4",
+            operacoes_fatura=get_or_create_fatura(db, conta, curr_dt) if fat_id else None,
+            operacoes_parcela=curr_parcela,
+            operacoes_efetivado=curr_efetivado,
+            operacoes_data_efetivado=curr_dt_efetivado,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_id
+        )
+        op_entrada = Operacao(
+            operacoes_data_lancamento=curr_dt,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta_destino,
+            operacoes_valor=valor_final,
+            operacoes_tipo="4",
+            operacoes_fatura=get_or_create_fatura(db, conta_destino, curr_dt) if fat_id else None,
+            operacoes_parcela=curr_parcela,
+            operacoes_efetivado=curr_efetivado,
+            operacoes_data_efetivado=curr_dt_efetivado,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_id
+        )
+        db.add(op_saida); db.add(op_entrada); db.flush()
+        op_saida.operacoes_transf_rel = op_entrada.operacoes_id
+        op_entrada.operacoes_transf_rel = op_saida.operacoes_id
+
+        if i == 0:
+            log_evento(db, "INSERT", "TRANSFERÊNCIA", op_saida.operacoes_id, f"Série '{descricao}' compartilhada no Grupo {grupo_id}", sessao.get("id"))
     
     db.commit()
     
@@ -205,16 +259,23 @@ async def inserir_transferencia(
 @router.post("/inserir")
 async def inserir_lancamento(
     request: Request,
-    descricao: str = Form(...),
-    conta: Optional[int] = Form(default=None),
-    valor: str = Form(...),
-    tipo: int = Form(...),
-    data: str = Form(...),
-    categoria: Optional[str] = Form(default=None),
+    descricao: str = Form(...), #
+    conta: Optional[int] = Form(default=None), #
+    valor: str = Form(...), #
+    tipo: int = Form(...), #
+    data: str = Form(...), #
+    categoria: Optional[str] = Form(default=None), #
     fatura: Optional[str] = Form(default=None),
     parcela_atual: Optional[int] = Form(default=None),
     parcela_total: Optional[int] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
+    efetivado: int = Form(default=0),
+    data_efetivado: Optional[str] = Form(default=None),
+    repetir: Optional[str] = Form(default=None), #
+    modo_repeticao: Optional[str] = Form(default="parcelado"), #
+    num_parcelas: Optional[int] = Form(default=2), #
+    frequencia: Optional[str] = Form(default="mensal"), #
+    ocorrencias: Optional[int] = Form(default=12), #
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -242,30 +303,67 @@ async def inserir_lancamento(
     if fat_id:
         final_fat_id = get_or_create_fatura(db, conta, dt_operacao)
 
-    op = Operacao(
-        operacoes_data_lancamento=dt_operacao,
-        operacoes_descricao=descricao,
-        operacoes_conta=conta,
-        operacoes_valor=valor_final,
-        operacoes_tipo=tipo,
-        operacoes_categoria=cat_id,
-        operacoes_fatura=final_fat_id,
-        operacoes_parcela=parcela_str,
-        operacoes_efetivado=0,
-        operacoes_validacao=1,
-    )
-    db.add(op);
-    
-    if final_fat_id:
-        # Usamos um update atômico no banco de dados. 
-        # Isso evita que dois usuários atualizando ao mesmo tempo sobrescrevam um ao outro.
-        db.query(FaturaCartao).filter(FaturaCartao.fatura_id == final_fat_id).update({FaturaCartao.valor_total: FaturaCartao.valor_total + valor_final})
-            
-    db.flush()
+    dt_efetivado = None
+    if efetivado:
+        if data_efetivado:
+            dt_efetivado = datetime.fromisoformat(data_efetivado)
+        else:
+            dt_efetivado = datetime.now()
 
-    # Log da inserção
-    log_evento(db, "INSERT", "OPERACAO", op.operacoes_id, f"Lançamento '{descricao}' de R$ {valor_final}", sessao.get("id"))
+    grupo_id = f"GAP-{uuid.uuid4().hex[:10]}" if (parcela_str or repetir) else None
     
+    is_repetir = repetir == "on" or repetir == "1" or repetir is True
+    repeticoes = 1
+    if is_repetir:
+        if modo_repeticao == "parcelado":
+            repeticoes = num_parcelas or 2
+        else:
+            repeticoes = ocorrencias or 12
+
+    for i in range(repeticoes):
+        curr_dt = dt_operacao
+        if i > 0:
+            if modo_repeticao == "parcelado" or frequencia == "mensal":
+                curr_dt = dt_operacao + relativedelta(months=i)
+            elif frequencia == "semanal":
+                curr_dt = dt_operacao + timedelta(weeks=i)
+            elif frequencia == "anual":
+                curr_dt = dt_operacao + relativedelta(years=i)
+        
+        curr_parcela = None
+        if modo_repeticao == "parcelado":
+            curr_parcela = f"{i+1:03d}.{repeticoes:03d}"
+        elif parcela_str:
+            curr_parcela = parcela_str
+
+        curr_efetivado = efetivado if i == 0 else 0
+        curr_dt_efetivado = dt_efetivado if i == 0 else None
+        
+        curr_fat_id = get_or_create_fatura(db, conta, curr_dt) if fat_id else None
+
+        op = Operacao(
+            operacoes_data_lancamento=curr_dt,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta,
+            operacoes_valor=valor_final,
+            operacoes_tipo=tipo,
+            operacoes_categoria=cat_id,
+            operacoes_fatura=curr_fat_id,
+            operacoes_parcela=curr_parcela,
+            operacoes_efetivado=curr_efetivado,
+            operacoes_data_efetivado=curr_dt_efetivado,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_id
+        )
+        db.add(op)
+        
+        if curr_fat_id:
+            db.query(FaturaCartao).filter(FaturaCartao.fatura_id == curr_fat_id).update({FaturaCartao.valor_total: FaturaCartao.valor_total + valor_final})
+        
+        db.flush()
+        if i == 0:
+            log_evento(db, "INSERT", f"LANÇAMENTO {tipo}", op.operacoes_id, f"Início de série '{descricao}' no Grupo {grupo_id}", sessao.get("id"))
+
     db.commit()
     
     redirecionar = next_url or request.headers.get("referer") or f"/extrato?c={conta}"
@@ -277,10 +375,18 @@ async def efetivar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
     from datetime import datetime
     op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
     if op:
+        agora = datetime.now()
         op.operacoes_efetivado = 1
-        op.operacoes_data_efetivado = datetime.now()
+        op.operacoes_data_efetivado = agora
         
-        # Log da efetivação
+        # Se for transferência, efetiva o outro lado também
+        if op.operacoes_transf_rel:
+            rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+            if rel:
+                rel.operacoes_efetivado = 1
+                rel.operacoes_data_efetivado = agora
+                log_evento(db, "UPDATE", "OPERACAO", rel.operacoes_id, f"Efetivado lado relacionado da transferência '{rel.operacoes_descricao}'", sessao.get("id"))
+        
         log_evento(db, "UPDATE", "OPERACAO", op.operacoes_id, f"Efetivado lançamento '{op.operacoes_descricao}'", sessao.get("id"))
         
         db.commit()
@@ -306,6 +412,56 @@ async def deletar(request: Request, op_id: int, db=Depends(get_db), sessao=Depen
     return RedirectResponse(url=request.headers.get("referer", "/dashboard"), status_code=303)
 
 
+@router.get("/editar/{op_id}")
+async def editar_get(
+    op_id: int,
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    """Retorna JSON com os dados do lançamento para preencher o modal dinamicamente."""
+    op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+    if not op:
+        return JSONResponse(status_code=404, content={"erro": "Lançamento não encontrado"})
+
+    # Descobre a conta origem e destino corretamente para transferências
+    conta_origem_id = op.operacoes_conta
+    conta_destino_id = None
+    
+    if op.operacoes_transf_rel:
+        op_rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+        if op_rel:
+            # Se clicamos na ENTRADA (valor > 0), a 'conta' do formulário (origem) deve ser a conta da outra ponta.
+            # E a 'conta_destino' deve ser a conta desta ponta (entrada).
+            if float(op.operacoes_valor) > 0:
+                conta_origem_id = op_rel.operacoes_conta
+                conta_destino_id = op.operacoes_conta
+            else:
+                # Se clicamos na SAÍDA (valor < 0), a conta de origem é esta, e a de destino é a outra.
+                conta_origem_id = op.operacoes_conta
+                conta_destino_id = op_rel.operacoes_conta
+
+    valor_safe = float(op.operacoes_valor) if op.operacoes_valor is not None else 0.0
+    conta_origem_safe = int(conta_origem_id) if conta_origem_id is not None else None
+    conta_destino_safe = int(conta_destino_id) if conta_destino_id is not None else None
+
+    return JSONResponse(content=jsonable_encoder({
+        "id": int(op.operacoes_id),
+        "descricao": op.operacoes_descricao or "",
+        "valor": float(abs(valor_safe)),
+        "tipo": int(op.operacoes_tipo) if op.operacoes_tipo is not None else None,
+        "data": op.operacoes_data_lancamento.isoformat() if op.operacoes_data_lancamento else None,
+        "categoria": int(op.operacoes_categoria) if op.operacoes_categoria is not None else None,
+        "conta": conta_origem_safe,
+        "conta_destino": conta_destino_safe,
+        "transf_rel": int(op.operacoes_transf_rel) if op.operacoes_transf_rel is not None else None,
+        "parcela": op.operacoes_parcela,
+        "recorrencia": int(op.operacoes_recorrencia) if op.operacoes_recorrencia is not None else None,
+        "efetivado": int(op.operacoes_efetivado) if op.operacoes_efetivado is not None else 0,
+        "data_efetivado": op.operacoes_data_efetivado.strftime("%Y-%m-%d") if op.operacoes_data_efetivado else None,
+    }))
+
+
+
 @router.post("/editar/{op_id}")
 async def editar(
     request: Request,
@@ -315,32 +471,207 @@ async def editar(
     valor: str = Form(...),
     tipo: int = Form(...),
     data: str = Form(...),
-    categoria: Optional[int] = Form(default=None),
+    categoria: Optional[str] = Form(default=None),
+    escopo: str = Form(default="so_este"),
+    efetivado: int = Form(default=0),
+    data_efetivado: Optional[str] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
     op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
-    if op:
-        # Limpa formatação BRL
-        valor_limpo = valor.replace(".", "").replace(",", ".")
-        valor_float = float(valor_limpo)
-        valor_final = -abs(valor_float) if tipo == 3 else abs(valor_float)
-        
-        detalhes = f"Editado: '{op.operacoes_descricao}' -> '{descricao}'. R$ {op.operacoes_valor} -> R$ {valor_final}"
-        
-        op.operacoes_descricao = descricao
-        op.operacoes_conta = conta
-        op.operacoes_valor = valor_final
-        op.operacoes_tipo = tipo
-        op.operacoes_data_lancamento = date.fromisoformat(data)
-        op.operacoes_categoria = categoria
-        
-        # Log da edição
-        log_evento(db, "UPDATE", "OPERACAO", op_id, detalhes, sessao.get("id"))
-        
-        db.commit()
+    if not op:
+        redirecionar = next_url or request.headers.get("referer") or "/dashboard"
+        return RedirectResponse(url=redirecionar, status_code=303)
+
+    # Limpa formatação BRL
+    valor_limpo = valor.replace(".", "").replace(",", ".")
+    valor_float = float(valor_limpo)
+    valor_final = -abs(valor_float) if tipo == 3 else abs(valor_float)
+    dt_operacao = date.fromisoformat(data)
+    cat_id = int(categoria) if categoria and str(categoria).strip() else None
+
+    detalhes = f"Editado: '{op.operacoes_descricao}' -> '{descricao}'. R$ {op.operacoes_valor} -> R$ {valor_final}"
+
+    def _aplicar_edicao(operacao: Operacao):
+        """Aplica os campos editados em uma operação."""
+        sinal = -1 if float(operacao.operacoes_valor) < 0 else 1
+        operacao.operacoes_descricao = descricao
+        operacao.operacoes_conta = conta
+        operacao.operacoes_valor = abs(valor_float) * sinal if tipo == 3 else abs(valor_float) * sinal
+        operacao.operacoes_valor = valor_final
+        operacao.operacoes_tipo = tipo
+        operacao.operacoes_data_lancamento = dt_operacao
+        operacao.operacoes_categoria = cat_id
+
+    log_evento(db, "UPDATE", "OPERACAO", op_id, detalhes, sessao.get("id"))
     
+    # IMPORTANTE: Captura a data original para a lógica de cascata ANTES de aplicar a edição
+    old_date = op.operacoes_data_lancamento
+    grupo_id = op.operacoes_grupo_id
+
+    _aplicar_edicao(op)
+    op.operacoes_efetivado = efetivado
+    if efetivado and data_efetivado:
+        op.operacoes_data_efetivado = datetime.fromisoformat(data_efetivado)
+    elif efetivado and not op.operacoes_data_efetivado:
+        op.operacoes_data_efetivado = datetime.now()
+    elif not efetivado:
+        op.operacoes_data_efetivado = None
+
+    # Edição em cascata robusta
+    if escopo == "subsequentes":
+        new_date = dt_operacao
+        ops_seguintes = []
+
+        if grupo_id:
+            ops_seguintes = db.query(Operacao).filter(
+                Operacao.operacoes_grupo_id == grupo_id,
+                Operacao.operacoes_data_lancamento > old_date,
+                Operacao.operacoes_validacao == 1,
+            ).order_by(Operacao.operacoes_data_lancamento).all()
+        elif op.operacoes_parcela:
+            # Fallback para parcelas sem grupo_id
+            p_sep = "/" if "/" in str(op.operacoes_parcela) else "."
+            parcela_total_num = int(str(op.operacoes_parcela).split(p_sep)[1])
+            ops_seguintes = db.query(Operacao).filter(
+                Operacao.operacoes_descricao == op.operacoes_descricao,
+                Operacao.operacoes_conta == op.operacoes_conta,
+                Operacao.operacoes_data_lancamento > old_date,
+                Operacao.operacoes_validacao == 1,
+            ).all()
+            ops_seguintes = [o for o in ops_seguintes if str(o.operacoes_parcela).endswith(f"{p_sep}{parcela_total_num:03d}")]
+
+        for o in ops_seguintes:
+            # Sincroniza campos básicos
+            o.operacoes_descricao = descricao
+            o.operacoes_categoria = cat_id
+            o.operacoes_valor = valor_final
+            o.operacoes_conta = conta
+            o.operacoes_tipo = tipo
+            
+            # Ajuste de data inteligente
+            if new_date != old_date:
+                diff = relativedelta(o.operacoes_data_lancamento, old_date)
+                o.operacoes_data_lancamento = new_date + diff
+            
+            # Se não tinha grupo_id, aproveitamos para atribuir o do pai (ou criar um se o pai não tinha)
+            if not o.operacoes_grupo_id:
+                if not op.operacoes_grupo_id:
+                     op.operacoes_grupo_id = f"GAP-{uuid.uuid4().hex[:10]}"
+                o.operacoes_grupo_id = op.operacoes_grupo_id
+            
+            log_evento(db, "UPDATE", "OPERACAO", o.operacoes_id,
+                       f"Editado em cascata: '{descricao}'", sessao.get("id"))
+
+    db.commit()
+
+    redirecionar = next_url or request.headers.get("referer") or "/dashboard"
+    return RedirectResponse(url=redirecionar, status_code=303)
+
+
+@router.post("/editar-transferencia/{op_id}")
+async def editar_transferencia(
+    request: Request,
+    op_id: int,
+    descricao: str = Form(...),
+    conta_origem: int = Form(...),
+    conta_destino: int = Form(...),
+    valor: str = Form(...),
+    data: str = Form(...),
+    escopo: str = Form(default="so_este"),
+    next_url: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    """Edita o par de operações de uma transferência (saída + entrada espelho)."""
+    # Busca a operação principal (pode ser saída ou entrada)
+    op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+    if not op:
+        redirecionar = next_url or request.headers.get("referer") or "/dashboard"
+        return RedirectResponse(url=redirecionar, status_code=303)
+
+    # Garante que temos a operação de SAÍDA (valor negativo)
+    op_saida = op if float(op.operacoes_valor) < 0 else None
+    op_entrada = op if float(op.operacoes_valor) > 0 else None
+
+    if op.operacoes_transf_rel:
+        op_rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+        if op_rel:
+            if float(op.operacoes_valor) < 0:
+                op_entrada = op_rel
+            else:
+                op_saida = op_rel
+
+    valor_limpo = valor.replace(".", "").replace(",", ".")
+    valor_float = float(valor_limpo)
+    dt_operacao = date.fromisoformat(data)
+
+    # IMPORTANTE: Captura a data original e grupo_id para a lógica de cascata ANTES de modificar as operações
+    old_date = op.operacoes_data_lancamento
+    grupo_id = op.operacoes_grupo_id
+
+    detalhes = f"Transferência editada: '{descricao}' R$ {valor_float} de conta {conta_origem} -> {conta_destino}"
+
+    if op_saida:
+        op_saida.operacoes_descricao = descricao
+        op_saida.operacoes_conta = conta_origem
+        op_saida.operacoes_valor = -abs(valor_float)
+        op_saida.operacoes_data_lancamento = dt_operacao
+        log_evento(db, "UPDATE", "OPERACAO", op_saida.operacoes_id, detalhes, sessao.get("id"))
+
+    if op_entrada:
+        op_entrada.operacoes_descricao = descricao
+        op_entrada.operacoes_conta = conta_destino
+        op_entrada.operacoes_valor = abs(valor_float)
+        op_entrada.operacoes_data_lancamento = dt_operacao
+        log_evento(db, "UPDATE", "OPERACAO", op_entrada.operacoes_id, detalhes, sessao.get("id"))
+
+    # Sincronização em cascata para transferências
+    if escopo == "subsequentes":
+        new_date = dt_operacao
+        ops_seguintes = []
+        
+        if grupo_id:
+            ops_seguintes = db.query(Operacao).filter(
+                Operacao.operacoes_grupo_id == grupo_id,
+                Operacao.operacoes_data_lancamento > old_date,
+                Operacao.operacoes_validacao == 1
+            ).order_by(Operacao.operacoes_data_lancamento).all()
+        else:
+            # Fallback (menos preciso)
+            ops_seguintes = db.query(Operacao).filter(
+                Operacao.operacoes_descricao == op.operacoes_descricao,
+                Operacao.operacoes_data_lancamento > old_date,
+                Operacao.operacoes_validacao == 1
+            ).all()
+
+        for s_op in ops_seguintes:
+            s_op.operacoes_descricao = descricao
+            
+            # Ajuste de data inteligente
+            if new_date != old_date:
+                diff = relativedelta(s_op.operacoes_data_lancamento, old_date)
+                s_op.operacoes_data_lancamento = new_date + diff
+            
+            # Sincroniza valor e conta dependendo se é entrada ou saída
+            if float(s_op.operacoes_valor) < 0:
+                s_op.operacoes_valor = -abs(valor_float)
+                s_op.operacoes_conta = conta_origem
+            else:
+                s_op.operacoes_valor = abs(valor_float)
+                s_op.operacoes_conta = conta_destino
+            
+            if not s_op.operacoes_grupo_id:
+                 if not op.operacoes_grupo_id:
+                      op.operacoes_grupo_id = f"GAP-{uuid.uuid4().hex[:10]}"
+                 s_op.operacoes_grupo_id = op.operacoes_grupo_id
+
+            log_evento(db, "UPDATE", "OPERACAO", s_op.operacoes_id,
+                       f"Transferência editada em cascata: '{descricao}'", sessao.get("id"))
+
+    db.commit()
+
     redirecionar = next_url or request.headers.get("referer") or "/dashboard"
     return RedirectResponse(url=redirecionar, status_code=303)
 
