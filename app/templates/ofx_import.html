@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+
+{% block title %}Importar OFX{% endblock %}
+{% block page_title %}Importar OFX{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Drop Zone ─────────────────────────────────────────────────────── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .25s, background .25s;
+    background: rgba(255,255,255,.02);
+    position: relative;
+  }
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .drop-zone.dragover,
+  .drop-zone.has-file {
+    border-color: var(--primary);
+    background: rgba(99,102,241,.06);
+  }
+  .drop-icon {
+    width: 44px; height: 44px;
+    margin: 0 auto 14px;
+    color: var(--text-muted);
+    display: block;
+  }
+  .drop-zone.has-file .drop-icon { color: var(--primary); }
+
+  /* ── Stepper ───────────────────────────────────────────────────────── */
+  .ofx-stepper { display: flex; align-items: center; margin-bottom: 28px; }
+  .ofx-step { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .ofx-step-circle {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    color: var(--text-muted); flex-shrink: 0; transition: .25s;
+  }
+  .ofx-step.active .ofx-step-circle { border-color: var(--primary); background: var(--primary); color: #fff; }
+  .ofx-step.done   .ofx-step-circle { border-color: var(--success); background: var(--success); color: #fff; }
+  .ofx-step-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+  .ofx-step.active .ofx-step-label { color: var(--primary); }
+  .ofx-step.done   .ofx-step-label { color: var(--success); }
+  .ofx-step-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; border-radius: 2px; }
+
+  /* ── Seções ────────────────────────────────────────────────────────── */
+  .ofx-sec { display: none; }
+  .ofx-sec.active { display: block; }
+
+  /* ── Stats ─────────────────────────────────────────────────────────── */
+  .ofx-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .ofx-stat  { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .ofx-stat-val { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .ofx-stat-lbl { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ── Score pill ────────────────────────────────────────────────────── */
+  .score-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 10px; font-weight: 700;
+  }
+
+  /* ── Badges classificação ──────────────────────────────────────────── */
+  .badge-dup   { background: rgba(239,68,68,.15);  color: #f87171; border:1px solid rgba(239,68,68,.25); }
+  .badge-forte { background: rgba(99,102,241,.15); color: #a5b4fc; border:1px solid rgba(99,102,241,.25); }
+  .badge-fraco { background: rgba(251,191,36,.12); color: #fbbf24; border:1px solid rgba(251,191,36,.25); }
+  .badge-novo  { background: rgba(34,197,94,.12);  color: #4ade80; border:1px solid rgba(34,197,94,.25); }
+  .badge-skip  { background: rgba(255,255,255,.04); color: var(--text-muted); border:1px solid var(--border); }
+
+  /* ── Progress bar ──────────────────────────────────────────────────── */
+  .ofx-prog { height: 5px; background: var(--border); border-radius: 5px; overflow: hidden; margin-top: 8px; }
+  .ofx-prog-bar { height: 100%; background: var(--primary); border-radius: 5px; transition: width .35s ease; }
+
+  /* ── Alert inline ──────────────────────────────────────────────────── */
+  .ofx-alert {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 12px 14px; border-radius: 8px;
+    font-size: 13px; margin-bottom: 16px;
+  }
+  .ofx-alert.warn { background: rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.2); color: #fbbf24; }
+  .ofx-alert.info { background: rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.2); color: #a5b4fc; }
+  .ofx-alert svg { flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Compare grid no modal ─────────────────────────────────────────── */
+  .cg { display: grid; grid-template-columns: 110px 1fr 1fr; gap: 6px 14px; font-size: 12px; }
+  .cg-h { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing:.06em; padding-bottom:6px; border-bottom:1px solid var(--border); }
+  .cg-l { color: var(--text-muted); align-self: center; }
+  .cg-v { color: var(--text-main); align-self: center; }
+  .cg-v.diff { color: var(--primary); font-weight: 600; }
+
+  /* ── Confirmação ───────────────────────────────────────────────────── */
+  .ofx-confirm-scroll { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+
+  @media (max-width: 640px) {
+    .ofx-stats { grid-template-columns: repeat(2,1fr); }
+    .ofx-stepper { flex-wrap: wrap; gap: 8px; }
+    .ofx-step-line { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px;">
+  <div>
+    <h1>Importar OFX</h1>
+    <p class="text-muted">Importe extratos bancários e reconcilie com seus lançamentos</p>
+  </div>
+  <a href="/extrato" class="btn btn-sm" style="background:var(--card-bg); border:1px solid var(--border);">← Extrato</a>
+</div>
+
+<!-- Stepper -->
+<div class="ofx-stepper" id="stepper">
+  <div class="ofx-step active" id="stp-1"><div class="ofx-step-circle">1</div><span class="ofx-step-label">Selecionar arquivo</span></div>
+  <div class="ofx-step-line"></div>
+  <div class="ofx-step" id="stp-2"><div class="ofx-step-circle">2</div><span class="ofx-step-label">Revisar</span></div>
+  <div class="ofx-step-line"></div>
+  <div class="ofx-step" id="stp-3"><div class="ofx-step-circle">3</div><span class="ofx-step-label">Confirmar</span></div>
+  <div class="ofx-step-line"></div>
+  <div class="ofx-step" id="stp-4"><div class="ofx-step-circle">4</div><span class="ofx-step-label">Resultado</span></div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SEÇÃO 1 — UPLOAD
+════════════════════════════════════════════ -->
+<div class="ofx-sec active" id="sec-1">
+  <div class="card" style="padding: 24px; margin-bottom: 16px;">
+    <h3 style="margin:0 0 4px;">Arquivo OFX</h3>
+    <p class="text-muted" style="font-size:13px; margin:0 0 20px;">Suporta OFX 1.x (SGML) e OFX 2.x (XML) de qualquer banco.</p>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".ofx,.OFX">
+      <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <p id="dropText" style="font-weight:600; color:var(--text-muted); margin-bottom:6px;">Arraste o arquivo aqui ou clique para selecionar</p>
+      <p style="font-size:12px; color:var(--text-muted);">Formato aceito: <code>.ofx</code></p>
+    </div>
+
+    <div class="form-group" id="contaGroup" style="display:none; margin-top:20px;">
+      <label class="form-label" style="font-size:12px;">Conta bancária do extrato <span class="text-muted">(opcional)</span></label>
+      <select id="selConta" class="form-control">
+        <option value="">— Todas as contas —</option>
+        {% for conta in contas %}
+        <option value="{{ conta.conta_id }}">{{ conta.nome_conta }}</option>
+        {% endfor %}
+      </select>
+      <small class="text-muted">Filtra o matching apenas nos lançamentos dessa conta.</small>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:20px;">
+      <button class="btn btn-primary btn-sm" id="btnAnalisar" disabled onclick="analisarArquivo()">
+        Analisar arquivo →
+      </button>
+    </div>
+  </div>
+
+  <div class="ofx-alert info">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    O arquivo OFX <strong>não é enviado para servidores externos</strong>. Todo o processamento acontece no seu servidor.
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SEÇÃO 2 — REVISÃO
+════════════════════════════════════════════ -->
+<div class="ofx-sec" id="sec-2">
+
+  <div class="ofx-stats">
+    <div class="ofx-stat"><div class="ofx-stat-val" id="r-total" style="color:var(--text-main)">—</div><div class="ofx-stat-lbl">Total</div></div>
+    <div class="ofx-stat"><div class="ofx-stat-val text-danger" id="r-dup">—</div><div class="ofx-stat-lbl">Duplicidades</div></div>
+    <div class="ofx-stat"><div class="ofx-stat-val" id="r-match" style="color:var(--primary)">—</div><div class="ofx-stat-lbl">Matches</div></div>
+    <div class="ofx-stat"><div class="ofx-stat-val text-success" id="r-novo">—</div><div class="ofx-stat-lbl">Novos</div></div>
+  </div>
+
+  <div class="ofx-alert warn" id="alertDup" style="display:none;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span><strong>Atenção:</strong> <span id="alertDupQtd">0</span> lançamento(s) com FITID já registrado — ignorados por padrão.</span>
+  </div>
+
+  <div class="card" style="padding:0; overflow:hidden; margin-bottom:16px;">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px; padding:10px 12px;">
+              <input type="checkbox" id="checkAll" onchange="toggleAll(this)" title="Selecionar todos">
+            </th>
+            <th>Data</th>
+            <th>Descrição</th>
+            <th class="text-right">Valor</th>
+            <th style="width:32px;">T</th>
+            <th>Situação</th>
+            <th style="width:52px;">Score</th>
+            <th style="width:160px;">Ação</th>
+            <th style="width:36px;"></th>
+          </tr>
+        </thead>
+        <tbody id="tbodyRevisao">
+          <tr><td colspan="9" class="text-center text-muted" style="padding:24px;">Nenhum dado carregado.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:space-between;">
+    <button class="btn btn-sm" style="background:var(--card-bg); border:1px solid var(--border);" onclick="goTo(1)">← Voltar</button>
+    <button class="btn btn-primary btn-sm" onclick="goTo(3)">Revisar e confirmar →</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SEÇÃO 3 — CONFIRMAÇÃO
+════════════════════════════════════════════ -->
+<div class="ofx-sec" id="sec-3">
+  <div class="card" style="padding:24px; margin-bottom:16px;">
+    <h3 style="margin:0 0 20px;">Resumo da importação</h3>
+
+    <div class="ofx-stats" style="margin-bottom:20px;">
+      <div class="ofx-stat"><div class="ofx-stat-val" id="c-ef" style="color:var(--primary)">0</div><div class="ofx-stat-lbl">Efetivar</div></div>
+      <div class="ofx-stat"><div class="ofx-stat-val text-success" id="c-ins">0</div><div class="ofx-stat-lbl">Inserir</div></div>
+      <div class="ofx-stat"><div class="ofx-stat-val" id="c-ign" style="color:var(--text-muted)">0</div><div class="ofx-stat-lbl">Ignorar</div></div>
+      <div class="ofx-stat"><div class="ofx-stat-val text-danger" id="c-dup">0</div><div class="ofx-stat-lbl">Duplicidades</div></div>
+    </div>
+
+    <div class="ofx-confirm-scroll">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:8px 12px; text-align:left;">Data</th>
+            <th style="padding:8px 12px; text-align:left;">Descrição</th>
+            <th style="padding:8px 12px; text-align:right;">Valor</th>
+            <th style="padding:8px 12px; text-align:left;">Ação</th>
+            <th style="padding:8px 12px; text-align:left;">Match</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyConfirm">
+          <tr><td colspan="5" class="text-muted" style="padding:16px; text-align:center;">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:space-between;">
+    <button class="btn btn-sm" style="background:var(--card-bg); border:1px solid var(--border);" onclick="goTo(2)">← Voltar</button>
+    <button class="btn btn-primary btn-sm" onclick="executarImportacao()">✓ Importar agora</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SEÇÃO 4 — RESULTADO
+════════════════════════════════════════════ -->
+<div class="ofx-sec" id="sec-4">
+  <div class="card" style="padding:48px 24px; text-align:center;">
+
+    <!-- Progresso -->
+    <div id="wrapProgresso">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5" style="margin:0 auto 14px; display:block;">
+        <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+        <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+      </svg>
+      <p class="text-muted" id="progressoLabel" style="margin-bottom:12px;">Processando...</p>
+      <div class="ofx-prog" style="max-width:340px; margin:0 auto;">
+        <div class="ofx-prog-bar" id="progressBar" style="width:0%"></div>
+      </div>
+      <p id="progressoCont" style="font-size:11px; color:var(--text-muted); margin-top:6px;">0 / 0</p>
+    </div>
+
+    <!-- Resultado -->
+    <div id="wrapResultado" style="display:none;">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="1.5" style="margin:0 auto 18px; display:block;">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      <h2 style="margin-bottom:8px;">Importação concluída!</h2>
+      <p class="text-muted" style="font-size:13px; margin-bottom:32px;">Seus lançamentos foram processados com sucesso.</p>
+
+      <div class="ofx-stats" style="max-width:520px; margin:0 auto 28px;">
+        <div class="ofx-stat"><div class="ofx-stat-val" id="res-ef" style="color:var(--primary)">0</div><div class="ofx-stat-lbl">Efetivados</div></div>
+        <div class="ofx-stat"><div class="ofx-stat-val text-success" id="res-ins">0</div><div class="ofx-stat-lbl">Inseridos</div></div>
+        <div class="ofx-stat"><div class="ofx-stat-val" id="res-ign" style="color:var(--text-muted)">0</div><div class="ofx-stat-lbl">Ignorados</div></div>
+        <div class="ofx-stat"><div class="ofx-stat-val text-danger" id="res-err">0</div><div class="ofx-stat-lbl">Erros</div></div>
+      </div>
+
+      <div id="logErros" style="display:none; text-align:left; margin-bottom:20px;">
+        <p style="font-size:11px; font-weight:600; color:#f87171; margin-bottom:6px;">Lançamentos com erro:</p>
+        <pre id="logErrosConteudo" style="background:rgba(239,68,68,.05); border:1px solid rgba(239,68,68,.2); border-radius:8px; padding:10px; font-size:11px; color:#f87171; max-height:140px; overflow-y:auto; margin:0;"></pre>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:center;">
+        <a href="/extrato" class="btn btn-primary btn-sm">Ver Extrato</a>
+        <button class="btn btn-sm" style="background:var(--card-bg); border:1px solid var(--border);" onclick="resetar()">Importar outro arquivo</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODAL — DETALHES DO MATCH
+     usa o padrão .modal-backdrop do sistema
+════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modalMatch">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalMatchTitulo">Detalhes do Match</h2>
+      <button class="modal-close" onclick="closeModal('modalMatch')">&times;</button>
+    </div>
+    <div style="padding:0 24px;" id="modalMatchBody"></div>
+    <div style="padding:16px 24px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border); margin-top:16px;" id="modalMatchActions"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* =========================================================================
+   ESTADO
+========================================================================= */
+let ofxTransacoes = [];
+let selectedFile  = null;
+let contaId       = null;
+
+/* =========================================================================
+   TOKEN JWT — pega do cookie "access_token" (ajuste se necessário)
+========================================================================= */
+function getToken() {
+  const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+function authHeaders() {
+  const tok = getToken();
+  return tok ? { 'Authorization': 'Bearer ' + tok } : {};
+}
+
+/* =========================================================================
+   UTILITÁRIOS
+========================================================================= */
+const fmtM = v => 'R$ ' + Math.abs(parseFloat(v)).toLocaleString('pt-BR', {minimumFractionDigits:2});
+const fmtD = s => { if(!s) return '—'; const d = new Date(s + 'T12:00'); return d.toLocaleDateString('pt-BR'); };
+const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const BADGE_MAP = {
+  DUPLICIDADE: ['badge badge-dup',  '⚠ Duplicidade'],
+  MATCH_FORTE: ['badge badge-forte','🔍 Match forte'],
+  MATCH_FRACO: ['badge badge-fraco','💡 Match fraco'],
+  NOVO:        ['badge badge-novo', '✨ Novo'],
+};
+const SCORE_COLOR = {
+  DUPLICIDADE:'#f87171', MATCH_FORTE:'#a5b4fc',
+  MATCH_FRACO:'#fbbf24', NOVO:'#4ade80',
+};
+function pill(score, c) {
+  const col = SCORE_COLOR[c] || '#888';
+  return `<span class="score-pill" style="background:${col}22;color:${col};border:1px solid ${col}44;">${score}</span>`;
+}
+const ACAO_BADGE = {
+  efetivar: '<span class="badge badge-forte" style="font-size:10px;">Efetivar</span>',
+  forcar:   '<span class="badge badge-dup"   style="font-size:10px;">Forçar</span>',
+  inserir:  '<span class="badge badge-novo"  style="font-size:10px;">Inserir</span>',
+  ignorar:  '<span class="badge badge-skip"  style="font-size:10px;">Ignorar</span>',
+};
+
+/* =========================================================================
+   DROP ZONE
+========================================================================= */
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fi.addEventListener('change', () => { if (fi.files[0]) handleFile(fi.files[0]); });
+
+function handleFile(f) {
+  if (!f.name.toLowerCase().endsWith('.ofx')) {
+    showToast('Selecione um arquivo .ofx', 'error'); return;
+  }
+  selectedFile = f;
+  dz.classList.add('has-file');
+  document.getElementById('dropText').textContent = '✓ ' + f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+  document.getElementById('contaGroup').style.display = '';
+  document.getElementById('btnAnalisar').disabled = false;
+}
+document.getElementById('selConta').addEventListener('change', function() {
+  contaId = this.value || null;
+});
+
+/* =========================================================================
+   STEPPER
+========================================================================= */
+function goTo(n) {
+  document.querySelectorAll('.ofx-sec').forEach((s,i) => s.classList.toggle('active', i+1===n));
+  document.querySelectorAll('.ofx-step').forEach((el,i) => {
+    el.classList.remove('active','done');
+    if (i+1===n) el.classList.add('active');
+    else if (i+1<n) el.classList.add('done');
+  });
+  window.scrollTo({top:0, behavior:'smooth'});
+  if (n===3) buildConfirm();
+}
+
+/* =========================================================================
+   ANALISAR — POST /ofx/analisar
+========================================================================= */
+async function analisarArquivo() {
+  if (!selectedFile) return;
+  const btn = document.getElementById('btnAnalisar');
+  btn.disabled = true;
+  btn.textContent = 'Analisando...';
+
+  const fd = new FormData();
+  fd.append('arquivo', selectedFile);
+  if (contaId) fd.append('conta_id', contaId);
+
+  try {
+    const r = await fetch('/ofx/analisar', {
+      method: 'POST',
+      headers: authHeaders(),   // JWT no header
+      body: fd,
+    });
+    if (!r.ok) {
+      const e = await r.json();
+      throw new Error(e.detail || 'Erro ' + r.status);
+    }
+    const data = await r.json();
+    ofxTransacoes = data.transacoes;
+    buildRevisao();
+    goTo(2);
+  } catch(e) {
+    showToast('Erro: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analisar arquivo →';
+  }
+}
+
+/* =========================================================================
+   TABELA DE REVISÃO
+========================================================================= */
+function buildRevisao() {
+  let total=0, dup=0, match=0, novo=0;
+
+  const rows = ofxTransacoes.map((t, i) => {
+    total++;
+    if (t.classificacao === 'DUPLICIDADE')                               { dup++;   t.acao = 'ignorar'; }
+    else if (['MATCH_FORTE','MATCH_FRACO'].includes(t.classificacao))    { match++;  t.acao = 'efetivar'; }
+    else                                                                  { novo++;   t.acao = 'inserir'; }
+    return buildRow(t, i);
+  }).join('');
+
+  document.getElementById('tbodyRevisao').innerHTML = rows ||
+    '<tr><td colspan="9" class="text-muted text-center" style="padding:24px;">Nenhum lançamento encontrado.</td></tr>';
+
+  document.getElementById('r-total').textContent = total;
+  document.getElementById('r-dup').textContent   = dup;
+  document.getElementById('r-match').textContent = match;
+  document.getElementById('r-novo').textContent  = novo;
+
+  if (dup > 0) {
+    document.getElementById('alertDup').style.display = '';
+    document.getElementById('alertDupQtd').textContent = dup;
+  }
+}
+
+function buildRow(t, i) {
+  const [bc, bl] = BADGE_MAP[t.classificacao] || ['badge badge-skip','—'];
+  const sinal = t.tipo === 'C' ? 'text-success' : 'text-danger';
+  const tipoSvg = t.tipo === 'C'
+    ? `<svg width="13" height="13" class="text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>`
+    : `<svg width="13" height="13" class="text-danger"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  const temMatch = t.matchDb && t.classificacao !== 'NOVO';
+
+  let opts = '';
+  if (t.classificacao === 'DUPLICIDADE') {
+    opts = `<option value="ignorar" selected>Ignorar</option><option value="forcar">Forçar update</option>`;
+  } else if (t.classificacao === 'NOVO') {
+    opts = `<option value="inserir" selected>Inserir novo</option><option value="ignorar">Ignorar</option>`;
+  } else {
+    opts = `<option value="efetivar" selected>Efetivar match</option><option value="inserir">Inserir como novo</option><option value="ignorar">Ignorar</option>`;
+  }
+
+  return `<tr id="tr-${i}">
+    <td style="padding:8px 12px;">
+      <input type="checkbox" class="row-ck" data-i="${i}"
+        ${t.acao !== 'ignorar' ? 'checked' : ''} onchange="ckChange(this,${i})">
+    </td>
+    <td style="white-space:nowrap;">${fmtD(t.data)}</td>
+    <td>
+      <div style="font-weight:600; font-size:12px;">${esc((t.memo||'—').substring(0,44))}</div>
+      <div style="font-size:10px; color:var(--text-muted); font-family:monospace;">${esc(t.fitid)}</div>
+    </td>
+    <td class="text-right" style="font-weight:600;" ><span class="${sinal}">${fmtM(t.valor)}</span></td>
+    <td style="text-align:center;">${tipoSvg}</td>
+    <td><span class="${bc}" style="font-size:10px; white-space:nowrap;">${bl}</span></td>
+    <td>${pill(t.score||0, t.classificacao)}</td>
+    <td>
+      <select class="form-control" style="font-size:11px; padding:3px 6px; height:auto;"
+              onchange="setAcao(${i}, this.value)">${opts}</select>
+    </td>
+    <td style="text-align:center;">
+      ${temMatch ? `<button class="btn-icon" style="width:26px;height:26px;" onclick="abrirModal(${i})" title="Ver match">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>` : ''}
+    </td>
+  </tr>`;
+}
+
+function setAcao(i, v) { ofxTransacoes[i].acao = v; }
+
+function ckChange(cb, i) {
+  const t = ofxTransacoes[i];
+  t.acao = cb.checked ? (t.classificacao === 'NOVO' ? 'inserir' : 'efetivar') : 'ignorar';
+  const sel = document.querySelector(`#tr-${i} select`);
+  if (sel) sel.value = t.acao;
+}
+
+function toggleAll(cb) {
+  document.querySelectorAll('.row-ck').forEach(el => {
+    el.checked = cb.checked;
+    ckChange(el, parseInt(el.dataset.i));
+  });
+}
+
+/* =========================================================================
+   MODAL DE MATCH — usa openModal/closeModal do base.html
+========================================================================= */
+function abrirModal(i) {
+  const t  = ofxTransacoes[i];
+  const db = t.matchDb || {};
+
+  const titulos = {
+    DUPLICIDADE: '⚠ Duplicidade detectada',
+    MATCH_FORTE: '🔍 Match forte',
+    MATCH_FRACO: '💡 Match fraco',
+  };
+  document.getElementById('modalMatchTitulo').textContent = titulos[t.classificacao] || 'Detalhes';
+
+  const dv = Math.abs(parseFloat(t.valor) - parseFloat(db.valor||0)) < 0.01;
+  const dd = t.data === db.data_lancamento;
+
+  document.getElementById('modalMatchBody').innerHTML = `
+    <div class="cg" style="margin-bottom:12px;">
+      <div class="cg-h">Campo</div><div class="cg-h">OFX</div><div class="cg-h">Banco</div>
+      <div class="cg-l">FITID</div>
+      <div class="cg-v" style="font-family:monospace;font-size:10px;">${esc(t.fitid)}</div>
+      <div class="cg-v" style="font-family:monospace;font-size:10px;">${esc(db.ofx_fitid||'—')}</div>
+      <div class="cg-l">Data</div>
+      <div class="cg-v ${dd?'':'diff'}">${fmtD(t.data)}</div>
+      <div class="cg-v ${dd?'':'diff'}">${fmtD(db.data_lancamento)}</div>
+      <div class="cg-l">Valor</div>
+      <div class="cg-v ${dv?'':'diff'}">${fmtM(t.valor)}</div>
+      <div class="cg-v ${dv?'':'diff'}">${fmtM(db.valor||0)}</div>
+      <div class="cg-l">Tipo</div>
+      <div class="cg-v">${t.tipo==='C'?'Crédito':'Débito'}</div>
+      <div class="cg-v">${db.tipo==='C'?'Crédito':db.tipo==='D'?'Débito':'—'}</div>
+      <div class="cg-l">Descrição</div>
+      <div class="cg-v">${esc((t.memo||'').substring(0,36))}</div>
+      <div class="cg-v">${esc((db.descricao||'—').substring(0,36))}</div>
+      <div class="cg-l">Efetivado</div>
+      <div class="cg-v">—</div>
+      <div class="cg-v">${db.operacoes_efetivado ? '<span class="text-success">Sim</span>' : '<span class="text-muted">Não</span>'}</div>
+      <div class="cg-l">ID</div>
+      <div class="cg-v">—</div>
+      <div class="cg-v" style="font-family:monospace;font-size:10px;">#${esc(String(db.id||'—'))}</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      ${pill(t.score||0, t.classificacao)}
+      <span class="text-muted" style="font-size:11px;">score de similaridade</span>
+    </div>`;
+
+  const acts = document.getElementById('modalMatchActions');
+  if (t.classificacao === 'DUPLICIDADE') {
+    acts.innerHTML = `
+      <button class="btn btn-sm" style="background:var(--card-bg);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'ignorar')">Ignorar (recomendado)</button>
+      <button class="btn btn-sm text-danger" style="background:var(--card-bg);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'forcar')">Forçar update</button>`;
+  } else {
+    acts.innerHTML = `
+      <button class="btn btn-sm" style="background:var(--card-bg);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'ignorar')">Ignorar</button>
+      <button class="btn btn-sm" style="background:var(--card-bg);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'inserir')">Inserir como novo</button>
+      <button class="btn btn-primary btn-sm"
+              onclick="setAcaoModal(${i},'efetivar')">✓ Confirmar match</button>`;
+  }
+
+  openModal('modalMatch');
+}
+
+function setAcaoModal(i, acao) {
+  setAcao(i, acao);
+  const sel = document.querySelector(`#tr-${i} select`);
+  if (sel) sel.value = acao;
+  const cb = document.querySelector(`#tr-${i} .row-ck`);
+  if (cb) cb.checked = (acao !== 'ignorar');
+  closeModal('modalMatch');
+}
+
+/* =========================================================================
+   CONFIRMAÇÃO — SEÇÃO 3
+========================================================================= */
+function buildConfirm() {
+  let ef=0, ins=0, ign=0, dup=0;
+
+  const rows = ofxTransacoes.map(t => {
+    const a = t.acao;
+    if (['efetivar','forcar'].includes(a)) ef++;
+    else if (a === 'inserir') ins++;
+    else { ign++; if (t.classificacao === 'DUPLICIDADE') dup++; }
+
+    const sinal = t.tipo === 'C' ? 'text-success' : 'text-danger';
+    const matchInfo = t.matchDb
+      ? `<span style="font-size:10px;font-family:monospace;color:var(--text-muted);">#${t.matchDb.id}</span>`
+      : '—';
+
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px; white-space:nowrap; font-size:11px;">${fmtD(t.data)}</td>
+      <td style="padding:8px 12px; font-size:11px;">${esc((t.memo||'').substring(0,44))}</td>
+      <td style="padding:8px 12px; text-align:right; font-weight:600;" class="${sinal}">${fmtM(t.valor)}</td>
+      <td style="padding:8px 12px;">${ACAO_BADGE[a]||''}</td>
+      <td style="padding:8px 12px;">${matchInfo}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tbodyConfirm').innerHTML = rows;
+  document.getElementById('c-ef').textContent  = ef;
+  document.getElementById('c-ins').textContent = ins;
+  document.getElementById('c-ign').textContent = ign;
+  document.getElementById('c-dup').textContent = dup;
+}
+
+/* =========================================================================
+   IMPORTAÇÃO — POST /ofx/efetivar por transação
+========================================================================= */
+async function executarImportacao() {
+  goTo(4);
+  document.getElementById('wrapProgresso').style.display  = '';
+  document.getElementById('wrapResultado').style.display  = 'none';
+
+  let ef=0, ins=0, ign=0, erros=0;
+  const log = [];
+  const total = ofxTransacoes.length;
+
+  for (let i = 0; i < total; i++) {
+    const t   = ofxTransacoes[i];
+    const pct = Math.round(((i+1)/total)*100);
+
+    document.getElementById('progressBar').style.width    = pct + '%';
+    document.getElementById('progressoCont').textContent  = `${i+1} / ${total}`;
+    document.getElementById('progressoLabel').textContent = `Processando: ${(t.memo||t.fitid).substring(0,50)}…`;
+
+    if (t.acao === 'ignorar') { ign++; continue; }
+
+    try {
+      const r = await fetch('/ofx/efetivar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          acao:     t.acao,
+          fitid:    t.fitid,
+          data:     t.data,
+          valor:    t.valor,
+          tipo:     t.tipo,
+          memo:     t.memo,
+          match_id: t.matchDb ? t.matchDb.id : null,
+          conta_id: contaId ? parseInt(contaId) : null,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) { erros++; log.push(`[${t.fitid}] ${data.detail||'Erro'}`); continue; }
+      if (t.acao === 'inserir') ins++; else ef++;
+    } catch(e) {
+      erros++; log.push(`[${t.fitid}] Rede: ${e.message}`);
+    }
+  }
+
+  document.getElementById('wrapProgresso').style.display = 'none';
+  document.getElementById('wrapResultado').style.display = '';
+  document.getElementById('res-ef').textContent  = ef;
+  document.getElementById('res-ins').textContent = ins;
+  document.getElementById('res-ign').textContent = ign;
+  document.getElementById('res-err').textContent = erros;
+
+  if (log.length) {
+    document.getElementById('logErros').style.display = '';
+    document.getElementById('logErrosConteudo').textContent = log.join('\n');
+  }
+  if (erros === 0) showToast(`Importação concluída: ${ef} efetivados, ${ins} inseridos.`, 'success');
+}
+
+/* =========================================================================
+   RESET
+========================================================================= */
+function resetar() {
+  selectedFile = null; ofxTransacoes = []; contaId = null;
+  fi.value = '';
+  dz.classList.remove('has-file','dragover');
+  document.getElementById('dropText').textContent = 'Arraste o arquivo aqui ou clique para selecionar';
+  document.getElementById('contaGroup').style.display = 'none';
+  document.getElementById('btnAnalisar').disabled = true;
+  document.getElementById('alertDup').style.display = 'none';
+  document.getElementById('progressBar').style.width = '0%';
+  goTo(1);
+}
+</script>
+{% endblock %}

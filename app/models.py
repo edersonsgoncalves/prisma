@@ -151,6 +151,8 @@ class Operacao(Base):
     operacoes_recorrencia: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("recorrencias.recorrencia_id"), nullable=True
     )
+    operacoes_fitid: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
     operacoes_data_efetivado: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     operacoes_efetivado: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
     operacoes_validacao: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
