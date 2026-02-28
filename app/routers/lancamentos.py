@@ -375,16 +375,16 @@ async def efetivar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
     from datetime import datetime
     op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
     if op:
-        agora = datetime.now()
+        # agora = datetime.now()
         op.operacoes_efetivado = 1
-        op.operacoes_data_efetivado = agora
+        op.operacoes_data_efetivado = op.operacoes_data_lancamento
         
         # Se for transferência, efetiva o outro lado também
         if op.operacoes_transf_rel:
             rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
             if rel:
                 rel.operacoes_efetivado = 1
-                rel.operacoes_data_efetivado = agora
+                rel.operacoes_data_efetivado = op.operacoes_data_lancamento
                 log_evento(db, "UPDATE", "OPERACAO", rel.operacoes_id, f"Efetivado lado relacionado da transferência '{rel.operacoes_descricao}'", sessao.get("id"))
         
         log_evento(db, "UPDATE", "OPERACAO", op.operacoes_id, f"Efetivado lançamento '{op.operacoes_descricao}'", sessao.get("id"))
