@@ -2,6 +2,7 @@
 helpers.py — Funções utilitárias reutilizáveis em toda a aplicação.
 Equivalente a dist/inc/funcoes.php
 """
+from pickletools import int4
 from decimal import Decimal
 from datetime import date
 from typing import Optional
