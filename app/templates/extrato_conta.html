@@ -343,8 +343,27 @@
           </label>
         </div>
       </div>
-      <div class="flex justify-end mt-4">
+      <div class="flex justify-end mt-4 gap-2">
+        <button type="button" class="btn btn-ghost btn-sm" id="btnShowConverter" onclick="toggleConverter()">Converter em Transferência</button>
         <button type="submit" class="btn btn-primary">Atualizar</button>
+      </div>
+
+      <!-- Área de Conversão (Escondida) -->
+      <div id="divConverter" style="display:none; margin-top:15px; padding:15px; border:1px dashed var(--primary); border-radius:8px; background:rgba(99,102,241,0.05);">
+        <h4 style="margin-top:0; font-size:13px; color:var(--primary);">Converter para Transferência</h4>
+        <p class="text-muted" style="font-size:11px; margin-bottom:10px;">Isso transformará este lançamento em uma transferência e criará o par correspondente na conta destino.</p>
+        <div class="form-group" id="groupConvertConta">
+          <label class="form-label" id="labelConvertConta">Conta de Destino</label>
+          <select id="convert_conta_destino" class="form-control">
+            <option value="">Selecione...</option>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex justify-end">
+          <button type="button" class="btn btn-primary btn-sm" onclick="executarConversao()">Confirmar Conversão</button>
+        </div>
       </div>
     </form>
 
@@ -578,6 +597,13 @@
     document.getElementById('editModalLoading').style.display = 'flex';
     document.getElementById('formEditarOpRD').style.display = 'none';
     document.getElementById('formEditarTransf').style.display = 'none';
+    
+    // Reset da área de conversão
+    const divConv = document.getElementById('divConverter');
+    if(divConv) divConv.style.display = 'none';
+    const btnConv = document.getElementById('btnShowConverter');
+    if(btnConv) btnConv.innerText = 'Converter em Transferência';
+
     openModal('modalEditarLancamento');
 
     try {
@@ -620,6 +646,56 @@
       console.error('Erro ao carregar lançamento:', e);
     } finally {
       document.getElementById('editModalLoading').style.display = 'none';
+    }
+  }
+
+  function toggleConverter() {
+    const div = document.getElementById('divConverter');
+    const btn = document.getElementById('btnShowConverter');
+    if (div.style.display === 'none') {
+      const isReceita = document.getElementById('edit_tipo_receita').checked;
+      const label = document.getElementById('labelConvertConta');
+      if (isReceita) {
+        label.innerText = 'Conta de Origem (de onde veio o dinheiro)';
+      } else {
+        label.innerText = 'Conta de Destino (para onde foi o dinheiro)';
+      }
+      div.style.display = 'block';
+      btn.innerText = 'Cancelar Conversão';
+    } else {
+      div.style.display = 'none';
+      btn.innerText = 'Converter em Transferência';
+    }
+  }
+
+  async function executarConversao() {
+    const opId = document.getElementById('formEditarOpRD').action.split('/').pop();
+    const contaDestino = document.getElementById('convert_conta_destino').value;
+
+    if (!contaDestino) {
+      alert('Selecione a conta de destino.');
+      return;
+    }
+
+    if (!confirm('Deseja realmente converter este lançamento em uma transferência?')) return;
+
+    const fd = new FormData();
+    fd.append('conta_destino_id', contaDestino);
+
+    try {
+      const resp = await fetch(`/lancamentos/converter-para-transferencia/${opId}`, {
+        method: 'POST',
+        body: fd
+      });
+      const data = await resp.json();
+      if (data.sucesso) {
+        window.location.reload();
+      } else {
+        alert('Erro ao converter: ' + (data.erro || 'Erro desconhecido'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Erro na requisição.');
     }
   }
 

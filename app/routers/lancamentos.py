@@ -706,3 +706,66 @@ async def duplicar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
         db.commit()
     
     return RedirectResponse(url=request.headers.get("referer", "/dashboard"), status_code=303)
+
+
+@router.post("/converter-para-transferencia/{op_id}")
+async def converter_para_transferencia(
+    op_id: int,
+    conta_destino_id: int = Form(...),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+    if not op:
+        return JSONResponse(status_code=404, content={"erro": "Lançamento não encontrado"})
+
+    if op.operacoes_transf_rel:
+        return JSONResponse(status_code=400, content={"erro": "Este lançamento já é uma transferência"})
+
+    # Valor original (sempre positivo no banco para R/D)
+    valor_original = float(op.operacoes_valor)
+    
+    # Determina se o original era Receita (1) ou Despesa (3)
+    # Se era Receita, a 'conta' atual recebeu dinheiro. Então na transferência ela é o DESTINO.
+    # Se era Despesa, a 'conta' atual pagou dinheiro. Então na transferência ela é a ORIGEM.
+    
+    nova_descricao = f"Transferência: {op.operacoes_descricao}"
+    grupo_id = op.operacoes_grupo_id or f"TRF-CONV-{uuid.uuid4().hex[:8]}"
+
+    # Criamos a contraparte
+    op_espelho = Operacao(
+        operacoes_data_lancamento=op.operacoes_data_lancamento,
+        operacoes_descricao=nova_descricao,
+        operacoes_conta=conta_destino_id,
+        operacoes_valor=valor_original if int(op.operacoes_tipo) == 3 else -valor_original,
+        operacoes_tipo="4",
+        operacoes_efetivado=op.operacoes_efetivado,
+        operacoes_data_efetivado=op.operacoes_data_efetivado,
+        operacoes_validacao=1,
+        operacoes_grupo_id=grupo_id
+    )
+    
+    # Atualizamos o original
+    # Pera, o tipo no banco para transferência é sempre "4". 
+    # O valor é que define se é entrada ou saída.
+    if int(op.operacoes_tipo) == 1: # Era receita, agora é entrada da transferência
+        op.operacoes_valor = valor_original
+        op_espelho.operacoes_valor = -valor_original
+    else: # Era despesa, agora é saída da transferência
+        op.operacoes_valor = -valor_original
+        op_espelho.operacoes_valor = valor_original
+
+    op.operacoes_tipo = "4"
+    op.operacoes_categoria = None # Transferência não tem categoria
+    op.operacoes_grupo_id = grupo_id
+
+    db.add(op_espelho)
+    db.flush() # Para pegar o ID do espelho
+
+    op.operacoes_transf_rel = op_espelho.operacoes_id
+    op_espelho.operacoes_transf_rel = op.operacoes_id
+
+    log_evento(db, "UPDATE", "OPERACAO", op.operacoes_id, f"Convertido para transferência (Destino: {conta_destino_id})", sessao.get("id"))
+    db.commit()
+
+    return JSONResponse(content={"sucesso": True, "id_original": op.operacoes_id, "id_espelho": op_espelho.operacoes_id})
