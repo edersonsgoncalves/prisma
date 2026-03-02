@@ -73,3 +73,6 @@ def formata_parcela(parcela: Optional[str | Decimal]) -> str:
         except ValueError:
             return p_str
     return p_str
+
+def date_today() -> str:
+    return date.today().isoformat()

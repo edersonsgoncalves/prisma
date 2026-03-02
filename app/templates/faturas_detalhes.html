@@ -9,19 +9,65 @@
     <h1>Vencimento: {{ mostra_data(fatura.data_vencimento) }}</h1>
     <p>Compras e lançamentos neste ciclo de faturamento.</p>
   </div>
-  <div class="badge {{ 'badge-info' if fatura.fechado else 'badge-warning' }}" style="font-size: 14px; padding: 6px 16px;">
-    {{ 'FECHADA' if fatura.fechado else 'ABERTA' }}
+  <div class="flex gap-2">
+    {% if not fatura.fechado %}
+    <button class="btn btn-primary" onclick="openModal('modalNovoLancamentoFatura')">
+      <i class="fas fa-plus mr-1"></i> Lançamento
+    </button>
+    <button class="btn btn-success" onclick="openModal('modalAdicionarPagamento')">
+      <i class="fas fa-hand-holding-usd mr-1"></i> Pagar Fatura
+    </button>
+    <div class="badge badge-warning" style="font-size: 14px; padding: 8px 16px; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2;">
+      <span>ABERTA</span>
+      <a href="/faturas/{{ fatura.fatura_id }}/fechar" style="font-size: 10px; color: #fff; text-decoration: underline; margin-top: 4px; font-weight: 600;">
+         Fechar Fatura
+      </a>
+    </div>
+    {% else %}
+    <div class="badge badge-info" style="font-size: 14px; padding: 8px 16px;">
+      FECHADA
+    </div>
+    {% endif %}
   </div>
 </div>
 
-<div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
   <div class="stat-card danger">
     <div class="stat-label">Valor Total</div>
-    <div class="stat-value">{{ formata_moeda((fatura.valor_total | abs)) }}</div>
+    <div class="stat-value">{{ formata_moeda((fatura.valor_total)) }}</div>
   </div>
-  <div class="stat-card">
+  <div class="stat-card ">
     <div class="stat-label">Data de Fechamento</div>
     <div class="stat-value" style="font-size: 18px;">{{ mostra_data(fatura.data_fechamento) }}</div>
+  </div>
+  <div class="stat-card success">
+    <div class="stat-label">Navegar Entre Faturas</div>
+    <div class="stat-value" style="font-size: 18px;">
+      {% if id_anterior %}
+        <a href="/faturas/{{ id_anterior }}" style="color:#E2E8E4">
+          < Anterior
+        </a>
+      {% else %}
+        < Anterior
+      {% endif %}
+      | 
+      {% if id_atual_logica %}
+        <a href="/faturas/{{ id_atual_logica }}" style="color:#E2E8E4">
+          Atual
+        </a>
+      {% else %}
+        Atual
+      {% endif %}
+
+      | 
+      {% if id_proxima %}
+        <a href="/faturas/{{ id_proxima }}" style="color:#E2E8E4">
+          Próxima >
+        </a>
+      {% else %}
+        Próxima >
+      {% endif %}
+    </div>
   </div>
 </div>
 
@@ -33,6 +79,7 @@
           <th>Data</th>
           <th>Descrição</th>
           <th class="text-right">Valor</th>
+          <th width="120" class="text-right">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -48,12 +95,411 @@
             </div>
           </td>
           <td class="text-right font-bold text-danger">{{ formata_moeda(op.operacoes_valor) }}</td>
+          <td class="text-right">
+            <div class="flex gap-2 justify-end">
+              <button class="btn btn-outline btn-xs" title="Duplicar"
+                      data-id="{{ op.operacoes_id }}"
+                      data-desc="{{ op.operacoes_descricao }}"
+                      data-valor="{{ op.operacoes_valor }}"
+                      data-tipo="{{ op.operacoes_tipo }}"
+                      data-data="{{ op.operacoes_data_lancamento }}"
+                      data-cat="{{ op.operacoes_categoria or '' }}"
+                      data-conta="{{ op.operacoes_conta }}"
+                      onclick="openDuplicateModal(this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+
+              <button class="btn btn-outline btn-xs" title="Editar"
+                      data-id="{{ op.operacoes_id }}"
+                      data-tipo="{{ op.operacoes_tipo }}"
+                      data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                      data-parcela="{{ op.operacoes_parcela or '' }}"
+                      data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                      onclick="openEditOpModal(this)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              
+              <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:inline;">
+                <button type="submit" class="btn btn-outline btn-xs text-danger" title="Excluir">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                </button>
+              </form>
+            </div>
+          </td>
         </tr>
+        
         {% else %}
         <tr><td colspan="3" class="text-center p-6 text-muted">Nenhum lançamento nesta fatura.</td></tr>
         {% endfor %}
       </tbody>
     </table>
+    
   </div>
 </div>
+
+
+
+
+
+
+
+
+
+
+<!-- MODAL: NOVO LANÇAMENTO NA FATURA -->
+<div class="modal-backdrop" id="modalNovoLancamentoFatura">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Novo Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalNovoLancamentoFatura')">&times;</button>
+    </div>
+    <form action="/lancamentos/inserir" method="post">
+      <input type="hidden" name="fatura" value="{{ fatura.fatura_id }}">
+      <input type="hidden" name="conta" value="{{ fatura.conta_id }}">
+      <input type="hidden" name="tipo" value="3"> <!-- Sempre Despesa por padrão em fatura -->
+      
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" class="form-control" placeholder="Ex: Assinatura Netflix" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" class="form-control" onkeyup="formatCurrency(this)" placeholder="0,00" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" class="form-control" value="{{ date_today() }}" required>
+        </div>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="switch-wrapper">
+          <span class="switch-label label-nao" id="labelRepetirNao">Repetir?</span>
+          <div class="switch">
+            <input type="checkbox" id="checkRepetirFatura" name="repetir" onchange="toggleRepetirFatura()">
+            <span class="slider"></span>
+          </div>
+          <span class="switch-label label-sim" id="labelRepetirSim">Sim</span>
+        </label>
+      </div>
+
+      <div id="divRepeticaoFatura" style="display: none; border: 1px dashed #444; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: rgba(255,255,255,0.02);">
+        <div class="form-group">
+          <label class="form-label">Modo de Repetição</label>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="modo_repeticao" value="parcelado" checked onchange="toggleModoRepeticaoFatura()">
+              <span>Parcelar</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="modo_repeticao" value="recorrente" onchange="toggleModoRepeticaoFatura()">
+              <span>Recorrência</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="divParceladoFatura" class="form-grid-2">
+          <div class="form-group mb-0">
+            <label class="form-label">Número de Parcelas</label>
+            <div class="flex gap-4 items-center">
+              <input type="number" name="num_parcelas" class="form-control" min="2" max="120" value="2" style="width: 80px;">
+              
+              <div class="flex gap-4 items-center bg-dark-lighter p-2 rounded border border-gray-700">
+                <span class="form-label mb-0" style="font-size: 11px;">O valor é:</span>
+                <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                  <input type="radio" name="valor_total_ou_parcela" value="total" checked> 
+                  <span style="font-size: 12px;">Total</span>
+                </label>
+                <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                  <input type="radio" name="valor_total_ou_parcela" value="parcela"> 
+                  <span style="font-size: 12px;">Parcela</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="divRecorrenteFatura" class="form-grid-2" style="display: none;">
+          <div class="form-group mb-0">
+            <label class="form-label">Frequência</label>
+            <select name="frequencia" class="form-control">
+              <option value="mensal">Mensal</option>
+              <option value="semanal">Semanal</option>
+              <option value="anual">Anual</option>
+            </select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Ocorrências</label>
+            <input type="number" name="ocorrencias" class="form-control" min="1" max="60" value="12">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Salvar Lançamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: PAGAMENTO DA FATURA -->
+<div class="modal-backdrop" id="modalAdicionarPagamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Pagar Fatura</h2>
+      <button class="modal-close" onclick="closeModal('modalAdicionarPagamento')">&times;</button>
+    </div>
+    <form action="/faturas/pagar" method="post">
+      <input type="hidden" name="conta_destino_fatura" value="{{ fatura.fatura_id }}">
+      
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" class="form-control" required value="Pagamento Fatura {{ fatura.cartao.nome_conta }}">
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" class="form-control" onkeyup="formatCurrency(this)" value="{{ (fatura.valor_total or 0) | abs }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data do Pagamento</label>
+          <input type="date" name="data" class="form-control" value="{{ date_today() }}" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Pagar com a conta:</label>
+        <select name="conta_origem" class="form-control" required>
+          <option value="">Selecione...</option>
+          <optgroup label="Conta Corrente">
+            {% for c in contas_todas if c.tipo_conta == 1 %}
+            <option value="{{ c.conta_id }}" {% if fatura.cartao.contas_prev_debito == c.conta_id %}selected{% endif %}>
+              {{ c.nome_conta }} (Conta Corrente)
+            </option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Dinheiro/Carteira">
+            {% for c in contas_todas if c.tipo_conta == 2 %}
+            <option value="{{ c.conta_id }}" {% if fatura.cartao.contas_prev_debito == c.conta_id %}selected{% endif %}>
+              {{ c.nome_conta }} (Dinheiro)
+            </option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Financeiro">
+            {% for c in contas_todas if c.tipo_conta == 3 %}
+            <option value="{{ c.conta_id }}" {% if fatura.cartao.contas_prev_debito == c.conta_id %}selected{% endif %}>
+              {{ c.nome_conta }} (Financeiro)
+            </option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Investimentos">
+            {% for c in contas_todas if c.tipo_conta == 5 %}
+            <option value="{{ c.conta_id }}" {% if fatura.cartao.contas_prev_debito == c.conta_id %}selected{% endif %}>
+              {{ c.nome_conta }} (Investimentos)
+            </option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+      
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-success">Confirmar Pagamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Editar Lançamento (Sincronizado com Extrato) -->
+<div class="modal-backdrop" id="modalEditarLancamento">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="editModalTitle">Editar Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarLancamento')">&times;</button>
+    </div>
+    
+    <div id="editModalLoading" style="display:none; padding: 40px; justify-content: center;">
+      <div class="spinner"></div>
+    </div>
+
+    <form id="formEditarOpRD" action="" method="post" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" id="edit_desc" class="form-control" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="edit_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" id="edit_data" class="form-control" required>
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <select name="categoria" id="edit_cat" class="form-control">
+            <option value="">Sem Categoria</option>
+            {% for cat in categorias %}
+            <option value="{{ cat.categorias_id }}">{{ cat.categorias_nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Conta</label>
+          <select name="conta" id="edit_conta" class="form-control" required>
+            <optgroup label="Conta Corrente">
+              {% for c in contas_todas if c.tipo_conta == 1 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Cartões de Crédito">
+              {% for c in contas_todas if c.tipo_conta == 4 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Dinheiro/Carteira">
+              {% for c in contas_todas if c.tipo_conta == 2 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="1" id="edit_tipo_receita"> Receita
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="tipo" value="3" id="edit_tipo_despesa"> Despesa
+          </label>
+        </div>
+      </div>
+
+      <!-- Escopo de Edição (Somente se parcelado/recorrente) -->
+      <div id="edit_escopo_section_rd" style="display:none; background: rgba(255,255,0,0.05); padding: 10px; border-radius: 4px; margin-bottom: 15px; border: 1px solid rgba(255,255,0,0.2);">
+        <label class="form-label" style="color: var(--warning);">Este lançamento faz parte de uma série. O que deseja editar?</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo" value="so_este" checked> Apenas este lançamento
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo" value="subsequentes"> Este e os próximos (Cascata)
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openModal(id) {
+  document.getElementById(id).style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+function formatCurrency(i) {
+  let v = i.value.replace(/\D/g,'');
+  v = (v/100).toFixed(2).replace(".",",");
+  v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+  v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
+  i.value = v;
+}
+
+function toggleRepetirFatura() {
+  const isRepetir = document.getElementById('checkRepetirFatura').checked;
+  document.getElementById('divRepeticaoFatura').style.display = isRepetir ? "" : "none";
+}
+
+function toggleModoRepeticaoFatura() {
+  const modo = document.querySelector('#modalNovoLancamentoFatura input[name="modo_repeticao"]:checked').value;
+  document.getElementById('divParceladoFatura').style.display = (modo === 'parcelado') ? "" : "none";
+  document.getElementById('divRecorrenteFatura').style.display = (modo === 'recorrente') ? "" : "none";
+}
+
+// Fecha modal ao clicar fora
+window.onclick = function(event) {
+  if (event.target.classList.contains('modal-backdrop')) {
+    event.target.style.display = 'none';
+  }
+}
+
+async function openEditOpModal(btn) {
+  const d = btn.dataset;
+  const opId = d.id;
+
+  document.getElementById('editModalTitle').innerText = 'Editar Lançamento';
+  document.getElementById('editModalLoading').style.display = 'flex';
+  document.getElementById('formEditarOpRD').style.display = 'none';
+
+  openModal('modalEditarLancamento');
+
+  try {
+    const resp = await fetch(`/lancamentos/editar/${opId}`);
+    const data = await resp.json();
+
+    const form = document.getElementById('formEditarOpRD');
+    form.action = `/lancamentos/editar/${opId}`;
+    document.getElementById('edit_desc').value = data.descricao || '';
+    document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    document.getElementById('edit_data').value = data.data || '';
+    document.getElementById('edit_cat').value = data.categoria || '';
+    document.getElementById('edit_conta').value = data.conta || '';
+    if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
+    else document.getElementById('edit_tipo_despesa').checked = true;
+
+    // Escopo: mostrar se parcelado ou recorrente
+    const escopoSection = document.getElementById('edit_escopo_section_rd');
+    if (data.parcela || data.recorrencia) {
+      escopoSection.style.display = '';
+    } else {
+      escopoSection.style.display = 'none';
+    }
+    form.style.display = '';
+  } catch(e) {
+    console.error('Erro ao carregar lançamento:', e);
+  } finally {
+    document.getElementById('editModalLoading').style.display = 'none';
+  }
+}
+
+function openDuplicateModal(btn) {
+  const d = btn.dataset;
+  const modal = document.getElementById('modalEditarLancamento');
+  document.getElementById('editModalTitle').innerText = 'Duplicar Lançamento';
+  document.getElementById('editModalLoading').style.display = 'none';
+
+  const form = document.getElementById('formEditarOpRD');
+  form.action = '/lancamentos/inserir';
+  document.getElementById('edit_escopo_section_rd').style.display = 'none';
+
+  document.getElementById('edit_desc').value = d.desc + ' (Cópia)';
+  // O d.valor vem negativo do banco para despesas, vamos limpar para o form formatado
+  const v = Math.abs(parseFloat(d.valor));
+  document.getElementById('edit_valor').value = v.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+  document.getElementById('edit_data').value = d.data;
+  document.getElementById('edit_cat').value = d.cat || '';
+  document.getElementById('edit_conta').value = d.conta || '';
+
+  if (d.tipo == '1') document.getElementById('edit_tipo_receita').checked = true;
+  else document.getElementById('edit_tipo_despesa').checked = true;
+
+  form.style.display = '';
+  openModal('modalEditarLancamento');
+}
+</script>
 {% endblock %}

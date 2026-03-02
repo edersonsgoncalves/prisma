@@ -4,38 +4,244 @@
 {% block page_title %}Cartões de Crédito{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<style>
+  /* Grid de layout para os Cartões (Grupos) */
+  .cartoes-wrapper {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* Card do Grupo (Estilo Identidade Prisma) */
+  .grupo-cartao {
+    background: #20243A;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .grupo-header {
+    padding: 16px 20px;
+    background-color: #20243A;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .grupo-titulo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .grupo-titulo i {
+    color: var(--accent-color);
+    font-size: 1.2rem;
+  }
+
+  .grupo-titulo h3 {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-main);
+  }
+
+  /* Container Interno das Faturas (Cards Menores) */
+  .faturas-list {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Card da Fatura Individual (Estilo Identidade Prisma) */
+  .fatura-card-item {
+    display: block;
+    text-decoration: none;
+    background: #20243A;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+
+  .fatura-card-item:hover {
+    border-color: var(--accent-color);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+
+  /* Marcadores laterais conforme o status */
+  .status-indicator {
+    position: absolute;
+    left: 0;
+    top: 14px;
+    bottom: 14px;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .indicador-aberta { background-color: #f59e0b; }
+  .indicador-fechada { background-color: #10b981; }
+
+  /* Tipografia Interna */
+  .fatura-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-left: 8px;
+  }
+
+  .data-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .dia-venc {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
+  }
+
+  .mes-venc {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .valor-fatura {
+    text-align: right;
+  }
+
+  .valor-fatura .preco {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e11d48; /* Cor de despesa do seu CSS */
+    display: block;
+  }
+
+  /* Botão de Histórico (Estilo btn-ghost do seu projeto) */
+  .btn-historico {
+    width: 100%;
+    padding: 12px;
+    background: none;
+    border: none;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .btn-historico:hover {
+    background-color: #20243A;
+    color: var(--accent-color);
+  }
+
+  .faturas-fechadas-container {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-color);
+  }
+</style>
+
+<div class="page-header mb-6">
   <h1>Faturas e Cartões</h1>
-  <p>Acompanhe seus gastos e datas de vencimento.</p>
+  <p>Gestão centralizada dos seus cartões de crédito.</p>
 </div>
 
-<div class="stats-grid">
-  {% for fatura in faturas %}
-  <div class="card flex flex-col justify-between" style="min-height: 160px;">
-    <div class="flex justify-between items-start">
-      <div>
-        <div class="badge badge-warning mb-2">Vence em {{ mostra_data(fatura.data_vencimento) }}</div>
-        <h3 style="font-size: 16px; font-weight: 700;">{{ fatura.cartao.nome_conta }}</h3>
-      </div>
-      <div class="badge {{ 'badge-success' if fatura.fechado else 'badge-warning' }}">
-        {{ 'Fechada' if fatura.fechado else 'Aberta' }}
-      </div>
-    </div>
+<div class="cartoes-wrapper">
+  {% for cartao_nome, faturas_do_cartao in faturas|groupby('cartao.nome_conta') %}
+  <div class="grupo-cartao">
     
-    <div class="mt-4">
-      <div class="stat-label">Valor da Fatura</div>
-      <div class="stat-value text-danger">{{ formata_moeda(fatura.valor_total) }}</div>
-      <div class="stat-sub">Fechamento: {{ mostra_data(fatura.data_fechamento) }}</div>
+    <div class="grupo-header">
+      <div class="grupo-titulo">
+        <i class="fas fa-credit-card"></i>
+        <h3>{{ cartao_nome }}</h3>
+      </div>
+      <span class="badge badge-muted badge-xs">Crédito</span>
     </div>
 
-    <div class="mt-4">
-      <a href="/faturas/{{ fatura.fatura_id }}" class="btn btn-ghost btn-sm w-full">Ver Detalhes</a>
+    <div class="faturas-list">
+      {% set ns = namespace(tem_fechadas=false) %}
+      
+      {% for fatura in faturas_do_cartao %}
+        {% if not fatura.fechado %}
+          <a href="/faturas/{{ fatura.fatura_id }}" class="fatura-card-item">
+            <div class="status-indicator indicador-aberta"></div>
+            <div class="fatura-info">
+              <div class="data-container">
+                <div class="dia-venc">{{ mostra_data(fatura.data_vencimento).split('/')[0] }}<br/>{{ mostra_data(fatura.data_vencimento).split('/')[1] }}</div>
+                <!-- <div>
+                  <div class="mes-venc">{{ mostra_data(fatura.data_vencimento).split('/')[1] }}</div>
+                </div> -->
+                <div class="text-muted" style="font-size: 10px;">Vencimento</div>
+              </div>
+              <div class="valor-fatura">
+                <span class="preco">{{ formata_moeda(fatura.valor_total) }}</span>
+                <span class="badge badge-warning" style="font-size: 9px; padding: 2px 6px;">ABERTA</span>
+              </div>
+            </div>
+          </a>
+        {% else %}
+          {% set ns.tem_fechadas = true %}
+        {% endif %}
+      {% endfor %}
+
+      {% if ns.tem_fechadas %}
+      <div id="container-fechadas-{{ loop.index }}" class="faturas-fechadas-container">
+        {% for fatura in faturas_do_cartao %}
+          {% if fatura.fechado %}
+          <a href="/faturas/{{ fatura.fatura_id }}" class="fatura-card-item" style="background: #2a304d; opacity: 0.8;">
+            <div class="status-indicator indicador-fechada"></div>
+            <div class="fatura-info">
+              <div class="data-container">
+                <span class="text-sm font-bold" style="color: var(--text-main);">{{ mostra_data(fatura.data_vencimento) }}</span>
+              </div>
+              <div class="text-right">
+                <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">{{ formata_moeda(fatura.valor_total) }}</span>
+              </div>
+            </div>
+          </a>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
-  </div>
-  {% else %}
-  <div class="card text-center p-8">
-    <p class="text-muted">Nenhuma fatura encontrada.</p>
+
+    {% if ns.tem_fechadas %}
+    <button class="btn-historico" onclick="toggleFechadas('{{ loop.index }}', this)">
+      <i class="fas fa-chevron-down mr-2"></i> Ver faturas anteriores
+    </button>
+    {% endif %}
   </div>
   {% endfor %}
 </div>
+
+<script>
+function toggleFechadas(id, btn) {
+    const container = document.getElementById('container-fechadas-' + id);
+    const isHidden = window.getComputedStyle(container).display === 'none';
+    
+    if (isHidden) {
+        container.style.display = 'flex';
+        btn.innerHTML = '<i class="fas fa-chevron-up mr-2"></i> Ocultar anteriores';
+    } else {
+        container.style.display = 'none';
+        btn.innerHTML = '<i class="fas fa-chevron-down mr-2"></i> Ver faturas anteriores';
+    }
+}
+</script>
 {% endblock %}

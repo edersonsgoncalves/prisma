@@ -3,6 +3,7 @@ from typing import Optional
 from calendar import monthrange
 import uuid
 from dateutil.relativedelta import relativedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Request, Depends, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -22,8 +23,7 @@ router = APIRouter(prefix="/lancamentos", tags=["lancamentos"])
 def _ctx_base(db: Session) -> dict:
     """Contexto comum para formulários de lançamento."""
     return {
-        "contas": db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).all(),
-        "cartoes": db.query(ContaBancaria).filter(ContaBancaria.tipo_conta == 4).all(),
+        "contas_todas": db.query(ContaBancaria).order_by(ContaBancaria.tipo_conta, ContaBancaria.nome_conta).all(),
         "categorias": db.query(Categoria).order_by(
             func.coalesce(Categoria.categorias_pai_id, Categoria.categorias_id),
             Categoria.categorias_pai_id.isnot(None),
@@ -39,6 +39,9 @@ def get_or_create_fatura(db: Session, cartao_id: int, data_original: date) -> in
     Se não encontrar, cria uma nova seguindo o dia de fechamento do cartão.
     """
     cartao = db.query(ContaBancaria).filter(ContaBancaria.conta_id == cartao_id).first()
+    if not cartao:
+        return None  # Ou lança erro se preferir
+        
     dia_fechamento = cartao.contas_cartao_fechamento or 1
     dia_vencimento = cartao.contas_prev_debito or 10
 
@@ -92,6 +95,21 @@ def get_or_create_fatura(db: Session, cartao_id: int, data_original: date) -> in
     db.add(log)
     
     return nova_fatura.fatura_id
+
+
+def recalcular_total_fatura(db: Session, fatura_id: int):
+    """Soma todas as operações de uma fatura e atualiza o campo valor_total."""
+    fatura = db.query(FaturaCartao).filter(FaturaCartao.fatura_id == fatura_id).first()
+    if not fatura:
+        return
+
+    total = db.query(func.sum(Operacao.operacoes_valor)).filter(
+        Operacao.operacoes_fatura == fatura_id,
+        Operacao.operacoes_validacao == 1
+    ).scalar() or Decimal("0.00")
+
+    fatura.valor_total = total
+    db.commit()
 
 
 def log_evento(db: Session, acao: str, entidade: str, entidade_id: int, detalhes: str, usuario_id: int = None):
@@ -189,12 +207,20 @@ async def inserir_transferencia(
     is_repetir = repetir == "on" or repetir == "1" or repetir is True
     
     repeticoes = 1
-    if repetir:
+    if is_repetir:
         if modo_repeticao == "parcelado":
-            repeticoes = num_parcelas
+            repeticoes = num_parcelas or 2
         else:
-            repeticoes = ocorrencias
+            repeticoes = ocorrencias or 12
 
+    # Lógica de Cálculo: Total vs Parcela
+    valor_unitario = valor_final
+    resto_divisao = 0
+    if is_repetir and valor_total_ou_parcela == "total":
+        valor_unitario = round(valor_final / repeticoes, 2)
+        resto_divisao = valor_final - (valor_unitario * repeticoes)
+
+    faturas_para_recalcular = set()
     for i in range(repeticoes):
         curr_dt = dt_operacao
         if i > 0:
@@ -204,6 +230,11 @@ async def inserir_transferencia(
                 curr_dt = dt_operacao + timedelta(weeks=i)
             elif frequencia == "anual":
                 curr_dt = dt_operacao + relativedelta(years=i)
+
+        # Valor ajustado para a última parcela
+        curr_valor_f = valor_unitario
+        if i == repeticoes - 1:
+            curr_valor_f += resto_divisao
         
         curr_parcela = None
         if modo_repeticao == "parcelado":
@@ -215,13 +246,16 @@ async def inserir_transferencia(
         curr_efetivado = efetivado if i == 0 else 0
         curr_dt_efetivado = dt_efetivado if i == 0 else None
 
+        curr_fat_saida = get_or_create_fatura(db, conta, curr_dt) if fat_id else None
+        curr_fat_entrada = get_or_create_fatura(db, conta_destino, curr_dt) if fat_id else None
+
         op_saida = Operacao(
             operacoes_data_lancamento=curr_dt,
             operacoes_descricao=descricao,
             operacoes_conta=conta,
-            operacoes_valor=-valor_final,
+            operacoes_valor=-abs(curr_valor_f),
             operacoes_tipo="4",
-            operacoes_fatura=get_or_create_fatura(db, conta, curr_dt) if fat_id else None,
+            operacoes_fatura=curr_fat_saida,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
             operacoes_data_efetivado=curr_dt_efetivado,
@@ -232,9 +266,9 @@ async def inserir_transferencia(
             operacoes_data_lancamento=curr_dt,
             operacoes_descricao=descricao,
             operacoes_conta=conta_destino,
-            operacoes_valor=valor_final,
+            operacoes_valor=abs(curr_valor_f),
             operacoes_tipo="4",
-            operacoes_fatura=get_or_create_fatura(db, conta_destino, curr_dt) if fat_id else None,
+            operacoes_fatura=curr_fat_entrada,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
             operacoes_data_efetivado=curr_dt_efetivado,
@@ -242,6 +276,9 @@ async def inserir_transferencia(
             operacoes_grupo_id=grupo_id
         )
         db.add(op_saida); db.add(op_entrada); db.flush()
+
+        if curr_fat_saida: faturas_para_recalcular.add(curr_fat_saida)
+        if curr_fat_entrada: faturas_para_recalcular.add(curr_fat_entrada)
         op_saida.operacoes_transf_rel = op_entrada.operacoes_id
         op_entrada.operacoes_transf_rel = op_saida.operacoes_id
 
@@ -249,6 +286,9 @@ async def inserir_transferencia(
             log_evento(db, "INSERT", "TRANSFERÊNCIA", op_saida.operacoes_id, f"Série '{descricao}' compartilhada no Grupo {grupo_id}", sessao.get("id"))
     
     db.commit()
+    
+    for f_id in faturas_para_recalcular:
+        recalcular_total_fatura(db, f_id)
     
     redirecionar = next_url or request.headers.get("referer") or f"/extrato?c={conta}"
     return RedirectResponse(url=redirecionar, status_code=303)
@@ -274,6 +314,7 @@ async def inserir_lancamento(
     repetir: Optional[str] = Form(default=None), #
     modo_repeticao: Optional[str] = Form(default="parcelado"), #
     num_parcelas: Optional[int] = Form(default=2), #
+    valor_total_ou_parcela: Optional[str] = Form(default="total"), #
     frequencia: Optional[str] = Form(default="mensal"), #
     ocorrencias: Optional[int] = Form(default=12), #
     db: Session = Depends(get_db),
@@ -285,10 +326,17 @@ async def inserir_lancamento(
     valor_final = -abs(valor_float) if tipo == 3 else abs(valor_float)
 
     # Converte categoria e fatura para int ou None (lidando com strings vazias do form)
-    cat_id = int(categoria) if categoria and categoria.strip() else None
+    cat_id = int(categoria) if categoria and categoria.strip() and categoria != "-1" else None
     fat_id = int(fatura) if fatura and fatura.strip() else None
 
-    # Se for cartão, a conta da operação deve ser o próprio cartão (fat_id)
+    # Lógica Inteligente: Se a conta selecionada for um Cartão (tipo 4),
+    # PRECISAMOS de uma fatura, mesmo que o usuário não tenha marcado o toggle.
+    acct_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
+    if acct_obj and acct_obj.tipo_conta == 4:
+        fat_id = conta # O fat_id no get_or_create_fatura usa o ID da conta do cartão
+
+    # Regra de negócio: Se for lançamento em fatura, o 'tipo' deve ser despesa (3) ou receita (1)
+    # mas o 'conta' (ID da conta_bancaria) deve ser o do cartão.
     if fat_id:
         conta = fat_id
 
@@ -320,6 +368,15 @@ async def inserir_lancamento(
         else:
             repeticoes = ocorrencias or 12
 
+    # Lógica de Cálculo: Total vs Parcela
+    valor_unitario = valor_final
+    resto_divisao = 0
+    if is_repetir and valor_total_ou_parcela == "total":
+        valor_unitario = round(valor_final / repeticoes, 2)
+        # Calcula a diferença de arredondamento para a última parcela
+        resto_divisao = valor_final - (valor_unitario * repeticoes)
+
+    faturas_para_recalcular = set()
     for i in range(repeticoes):
         curr_dt = dt_operacao
         if i > 0:
@@ -330,6 +387,11 @@ async def inserir_lancamento(
             elif frequencia == "anual":
                 curr_dt = dt_operacao + relativedelta(years=i)
         
+        # Valor ajustado para a última parcela
+        curr_valor = valor_unitario
+        if i == repeticoes - 1:
+            curr_valor += resto_divisao
+
         curr_parcela = None
         if modo_repeticao == "parcelado":
             curr_parcela = f"{i+1:03d}.{repeticoes:03d}"
@@ -345,7 +407,7 @@ async def inserir_lancamento(
             operacoes_data_lancamento=curr_dt,
             operacoes_descricao=descricao,
             operacoes_conta=conta,
-            operacoes_valor=valor_final,
+            operacoes_valor=curr_valor,
             operacoes_tipo=tipo,
             operacoes_categoria=cat_id,
             operacoes_fatura=curr_fat_id,
@@ -358,13 +420,16 @@ async def inserir_lancamento(
         db.add(op)
         
         if curr_fat_id:
-            db.query(FaturaCartao).filter(FaturaCartao.fatura_id == curr_fat_id).update({FaturaCartao.valor_total: FaturaCartao.valor_total + valor_final})
+            faturas_para_recalcular.add(curr_fat_id)
         
         db.flush()
         if i == 0:
             log_evento(db, "INSERT", f"LANÇAMENTO {tipo}", op.operacoes_id, f"Início de série '{descricao}' no Grupo {grupo_id}", sessao.get("id"))
 
     db.commit()
+
+    for f_id in faturas_para_recalcular:
+        recalcular_total_fatura(db, f_id)
     
     redirecionar = next_url or request.headers.get("referer") or f"/extrato?c={conta}"
     return RedirectResponse(url=redirecionar, status_code=303)
@@ -390,6 +455,7 @@ async def efetivar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
         log_evento(db, "UPDATE", "OPERACAO", op.operacoes_id, f"Efetivado lançamento '{op.operacoes_descricao}'", sessao.get("id"))
         
         db.commit()
+        if op.operacoes_fatura: recalcular_total_fatura(db, op.operacoes_fatura)
     return RedirectResponse(url=request.headers.get("referer", "/dashboard"), status_code=303)
 
 
@@ -397,6 +463,8 @@ async def efetivar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
 async def deletar(request: Request, op_id: int, db=Depends(get_db), sessao=Depends(require_login)):
     op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
     if op:
+        fat_id = op.operacoes_fatura
+        rel_fat_id = None
         desc_backup = op.operacoes_descricao
         if op.operacoes_transf_rel:
             rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
@@ -409,6 +477,10 @@ async def deletar(request: Request, op_id: int, db=Depends(get_db), sessao=Depen
         log_evento(db, "DELETE", "OPERACAO", op_id, f"Removido lançamento '{desc_backup}'", sessao.get("id"))
         
         db.delete(op); db.commit()
+
+        # Recalcula
+        if fat_id: recalcular_total_fatura(db, fat_id)
+        if rel_fat_id: recalcular_total_fatura(db, rel_fat_id)
     return RedirectResponse(url=request.headers.get("referer", "/dashboard"), status_code=303)
 
 
@@ -484,6 +556,11 @@ async def editar(
         redirecionar = next_url or request.headers.get("referer") or "/dashboard"
         return RedirectResponse(url=redirecionar, status_code=303)
 
+    # Impedir transferência para a mesma conta
+    if conta == conta_destino:
+        redirecionar = next_url or request.headers.get("referer") or "/extrato"
+        return RedirectResponse(url=redirecionar, status_code=303)
+        
     # Limpa formatação BRL
     valor_limpo = valor.replace(".", "").replace(",", ".")
     valor_float = float(valor_limpo)
@@ -506,7 +583,13 @@ async def editar(
 
     log_evento(db, "UPDATE", "OPERACAO", op_id, detalhes, sessao.get("id"))
     
-    # IMPORTANTE: Captura a data original para a lógica de cascata ANTES de aplicar a edição
+    # IMPORTANTE: Captura faturas e grupo_id ANTES das alterações
+    old_fat_id = op.operacoes_fatura
+    old_rel_fat_id = None
+    if op.operacoes_transf_rel:
+        rel_op = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+        if rel_op: old_rel_fat_id = rel_op.operacoes_fatura
+
     old_date = op.operacoes_data_lancamento
     grupo_id = op.operacoes_grupo_id
 
@@ -704,6 +787,7 @@ async def duplicar(request: Request, op_id: int, db=Depends(get_db), sessao=Depe
         log_evento(db, "INSERT", "OPERACAO", nova_op.operacoes_id, f"Duplicado lançamento '{op_origem.operacoes_descricao}'", sessao.get("id"))
         
         db.commit()
+        if nova_op.operacoes_fatura: recalcular_total_fatura(db, nova_op.operacoes_fatura)
     
     return RedirectResponse(url=request.headers.get("referer", "/dashboard"), status_code=303)
 
@@ -767,5 +851,9 @@ async def converter_para_transferencia(
 
     log_evento(db, "UPDATE", "OPERACAO", op.operacoes_id, f"Convertido para transferência (Destino: {conta_destino_id})", sessao.get("id"))
     db.commit()
+
+    # Recalcula se necessário
+    if op.operacoes_fatura: recalcular_total_fatura(db, op.operacoes_fatura)
+    if op_espelho.operacoes_fatura: recalcular_total_fatura(db, op_espelho.operacoes_fatura)
 
     return JSONResponse(content={"sucesso": True, "id_original": op.operacoes_id, "id_espelho": op_espelho.operacoes_id})

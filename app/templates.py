@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from app.helpers import (
     formata_moeda_brl, mostra_data, cor_valor, 
-    mes_por_extenso, formata_parcela
+    mes_por_extenso, formata_parcela, date_today
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -20,4 +20,5 @@ templates.env.globals.update(
     cor_valor=cor_valor,
     mes_por_extenso=mes_por_extenso,
     formata_parcela=formata_parcela,
+    date_today=date_today,
 )

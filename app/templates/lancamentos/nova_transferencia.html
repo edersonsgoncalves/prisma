@@ -86,18 +86,71 @@
       <div class="form-group">
         <label class="form-label">Conta de Origem (Saída)</label>
         <select name="conta" class="form-control" required>
-          {% for c in contas %}
-          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
-          {% endfor %}
+          <optgroup label="Conta Corrente">
+            {% for c in contas_todas if c.tipo_conta == 1 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Cartões de Crédito">
+            {% for c in contas_todas if c.tipo_conta == 4 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Dinheiro/Carteira">
+            {% for c in contas_todas if c.tipo_conta == 2 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Investimentos">
+            {% for c in contas_todas if c.tipo_conta == 5 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Financeiro">
+            {% for c in contas_todas if c.tipo_conta == 3 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Outros">
+            {% for c in contas_todas if c.tipo_conta == 6 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </optgroup>
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">Conta de Destino (Entrada)</label>
         <select name="conta_destino" class="form-control" required>
-          <option value="">Selecione o destino...</option>
-          {% for c in contas %}
-          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
-          {% endfor %}
+          <optgroup label="Conta Corrente">
+            {% for c in contas_todas if c.tipo_conta == 1 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Cartões de Crédito">
+            {% for c in contas_todas if c.tipo_conta == 4 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Dinheiro/Carteira">
+            {% for c in contas_todas if c.tipo_conta == 2 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Investimentos">
+            {% for c in contas_todas if c.tipo_conta == 5 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Financeiro">
+            {% for c in contas_todas if c.tipo_conta == 3 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Outros">
+            {% for c in contas_todas if c.tipo_conta == 6 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </optgroup>
         </select>
       </div>
     </div>
@@ -134,7 +187,21 @@
       <div id="divParcelado" class="form-grid-2">
         <div class="form-group mb-0">
           <label class="form-label">Número de Parcelas</label>
-          <input type="number" name="num_parcelas" class="form-control" min="2" max="120" value="2">
+          <div class="flex gap-4 items-center">
+            <input type="number" name="num_parcelas" class="form-control" min="2" max="120" value="2" style="width: 80px;">
+            
+            <div class="flex gap-4 items-center bg-dark-lighter p-2 rounded border border-gray-700">
+              <span class="form-label mb-0" style="font-size: 11px;">O valor é:</span>
+              <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                <input type="radio" name="valor_total_ou_parcela" value="total" checked> 
+                <span style="font-size: 12px;">Total</span>
+              </label>
+              <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                <input type="radio" name="valor_total_ou_parcela" value="parcela"> 
+                <span style="font-size: 12px;">Parcela</span>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -178,7 +245,7 @@
 
     <div class="flex justify-end gap-3">
       <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
-      <button type="submit" class="btn btn-primary">Realizar Transferência</button>
+      <button type="submit" class="btn btn-primary" id="btnSubmitTransf">Realizar Transferência</button>
     </div>
   </form>
 </div>
@@ -186,6 +253,35 @@
 
 {% block extra_scripts %}
 <script>
+  // Validação: não permitir mesma conta origem e destino
+  const selectOrig = document.querySelector('select[name="conta"]');
+  const selectDest = document.querySelector('select[name="conta_destino"]');
+
+  function filterDestOptions() {
+    const val = selectOrig.value;
+    const options = selectDest.querySelectorAll('option');
+    options.forEach(opt => {
+      if (opt.value && opt.value === val) {
+        opt.style.display = 'none';
+        if (selectDest.value === val) selectDest.value = "";
+      } else {
+        opt.style.display = '';
+      }
+    });
+  }
+
+  selectOrig.addEventListener('change', filterDestOptions);
+  window.addEventListener('load', filterDestOptions);
+
+  document.querySelector('form').addEventListener('submit', function(e) {
+    const orig = selectOrig.value;
+    const dest = selectDest.value;
+    if (orig && dest && orig === dest) {
+      e.preventDefault();
+      alert('A conta de origem não pode ser igual à de destino.');
+    }
+  });
+
   function handleEfetivadoToggle() {
     const isEfetivado = document.getElementById('checkEfetivado').checked;
     document.getElementById('input_efetivado').value = isEfetivado ? "1" : "0";
