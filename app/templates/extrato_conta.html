@@ -455,7 +455,7 @@
     <div class="form-grid-2">
       <div class="form-group">
         <label class="form-label">Conta de Origem (Saída)</label>
-        <select name="conta" class="form-control" required disabled>
+        <select name="conta" class="form-control" required>
           {% for a in contas_todas %}
           <option value="{{ a.conta_id }}" {{ 'selected' if conta.conta_id == a.conta_id }}>{{ a.nome_conta }}</option>
           {% endfor %}
