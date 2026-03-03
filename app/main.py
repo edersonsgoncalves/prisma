@@ -21,6 +21,7 @@ from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_exten
 from app.routers import dashboard, extrato, contas, faturas, lancamentos, categorias, projetos, recorrencias, relatorios, notificacoes
 from app.routers import auth as auth_router
 from app.routers.ofx import router as ofx_router
+from app.routers.importar_fatura import router as importar_fatura_router
 
 
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
@@ -57,6 +58,7 @@ app.include_router(recorrencias.router)
 app.include_router(relatorios.router)
 app.include_router(notificacoes.router)
 app.include_router(ofx_router)
+app.include_router(importar_fatura_router)
 
 @app.get("/", include_in_schema=False)
 async def root():
