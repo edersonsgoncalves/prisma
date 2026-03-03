@@ -238,6 +238,126 @@ textarea {
   font-weight: 600;
 }
 
+/* ═══════════════════════════════════════════════════
+   UX AVANÇADA / AÇÕES EM MASSA
+═══════════════════════════════════════════════════ */
+
+/* Floating Bulk Bar */
+.bulk-actions-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #252a33;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50px;
+  padding: 10px 25px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 1000;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.bulk-actions-bar.active {
+  transform: translateX(-50%) translateY(0);
+}
+
+.bulk-count {
+  font-weight: 700;
+  color: var(--primary);
+  font-size: 14px;
+  padding-right: 15px;
+  border-right: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Kebab Menu Styles */
+.dropdown-kebab {
+  position: relative;
+  display: inline-block;
+}
+
+.kebab-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  transition: 0.2s;
+}
+
+.kebab-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: #fff;
+}
+
+.dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  background-color: #252a33;
+  min-width: 160px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+  z-index: 100;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  margin-top: 5px;
+}
+
+.dropdown-content a, .dropdown-content button {
+  color: rgba(255,255,255,0.8);
+  padding: 10px 15px;
+  text-decoration: none;
+  display: block;
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.dropdown-content a:hover, .dropdown-content button:hover {
+  background-color: rgba(255,255,255,0.05);
+  color: #fff;
+}
+
+.dropdown-kebab:hover .dropdown-content {
+  display: block;
+}
+
+/* Checkbox styling */
+.checkbox-custom {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  transition: 0.2s;
+}
+
+.checkbox-custom:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.checkbox-custom:checked::after {
+  content: "✓";
+  position: absolute;
+  color: white;
+  font-size: 12px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -624,6 +744,148 @@ select.form-control {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
+}
+
+/* ─── Custom Checkbox ──────────────────────────────────────── */
+.checkbox-custom {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border-active);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition);
+  margin: 0 auto; /* para centralizar no flex/td */
+}
+
+.checkbox-custom:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox-custom:checked::after {
+  content: '';
+  width: 4px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+  margin-bottom: 2px;
+}
+
+/* ─── Kebab Menu (Dropdown Ações) ──────────────────────────── */
+.dropdown-kebab {
+  position: relative;
+  display: inline-block;
+}
+
+.kebab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.kebab-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.dropdown-kebab .dropdown-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background-color: var(--bg-surface);
+  min-width: 140px;
+  box-shadow: var(--shadow-sm);
+  z-index: 50;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-active);
+  overflow: hidden;
+}
+
+.dropdown-kebab:hover .dropdown-content,
+.dropdown-kebab:focus-within .dropdown-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-content button,
+.dropdown-content a {
+  color: var(--text-secondary);
+  padding: 10px 16px;
+  text-decoration: none;
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.dropdown-content button:hover,
+.dropdown-content a:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ─── Ações em Massa (Floating Bar) ────────────────────────── */
+.bulk-actions-bar {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  border-radius: var(--radius-lg);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bulk-actions-bar.active {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.bulk-count {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-count span {
+  background: var(--accent);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 12px;
 }
 
 /* ─── Modal ──────────────────────────────────────────── */

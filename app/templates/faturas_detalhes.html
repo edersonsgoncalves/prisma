@@ -1,150 +1,456 @@
 {% extends "base.html" %}
 
 {% block title %}Fatura {{ fatura.cartao.nome_conta }}{% endblock %}
-{% block page_title %}Fatura: {{ fatura.cartao.nome_conta }}{% endblock %}
+{% block page_title %}{% endblock %}
+{% block extra_head %}
+<style>
+  /* Layout de Duas Colunas */
+  .fatura-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 25px;
+    align-items: start;
+  }
+
+  @media (max-width: 1024px) {
+    .fatura-layout { grid-template-columns: 1fr; }
+  }
+
+  /* Estilização da Sidebar */
+  .fatura-sidebar {
+    position: sticky;
+    top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .sidebar-block {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  }
+
+  .sidebar-block-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.4);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-weight: 700;
+  }
+  .sidebar-block-title::before, .sidebar-block-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: rgba(255,255,255,0.05);
+    margin: 0 10px;
+  }
+
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .summary-table tr td {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .summary-table tr td:last-child {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .summary-table tr:last-child td { border-bottom: none; }
+
+  .label-muted { color: rgba(255,255,255,0.6); }
+
+  /* Navegação Retrô */
+  .month-picker {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 5px;
+    margin-bottom: 15px;
+  }
+  .nav-arrow {
+    padding: 8px 12px;
+    color: #fff;
+    text-decoration: none;
+    font-size: 18px;
+    border-radius: 6px;
+    transition: 0.2s;
+  }
+  .nav-arrow:hover { background: rgba(255,255,255,0.1); color: var(--primary); }
+  .nav-arrow.disabled { opacity: 0.2; cursor: not-allowed; }
+
+  .current-month {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--primary);
+  }
+
+  /* Main Area */
+  .list-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 15px;
+  }
+
+  .search-wrapper {
+    flex: 1;
+    position: relative;
+  }
+  .search-wrapper i {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-20%);
+    color: rgba(255,255,255,0.3);
+  }
+  .search-input {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 10px 15px 10px 35px;
+    color: #fff;
+    font-size: 14px;
+  }
+
+  .filter-tabs {
+    display: flex;
+    background: rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .filter-tab {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+    border: none;
+    background: transparent;
+    color: rgba(255,255,255,0.5);
+  }
+  .filter-tab.active {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+  }
+
+  .fatura-header-card {
+    background: linear-gradient(135deg, #1a1a1a 0%, #252525 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+  .fatura-header-card::after {
+    content: ""; position: absolute; top: -50px; right: -50px; width: 150px; height: 150px;
+    background: var(--primary); filter: blur(80px); opacity: 0.05; border-radius: 50%;
+  }
+
+  .nav-arrows-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Melhoria nas linhas da tabela */
+  .fatura-row {
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    transition: background 0.2s;
+  }
+  .fatura-row:hover {
+    background: rgba(255,255,255,0.02);
+  }
+  .fatura-row:hover .opacity-50 {
+    opacity: 1;
+  }
+
+  /* Grid de Índice de Meses (Específico de faturas) */
+  .month-index-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 20px;
+    background: #1e2229;
+    border-radius: 12px;
+  }
+
+  .month-item {
+    padding: 15px 10px;
+    text-align: center;
+    border-radius: 8px;
+    background: transparent;
+    color: rgba(255,255,255,0.4);
+    text-decoration: none;
+    font-size: 14px;
+    transition: 0.2s;
+    border: 1px solid transparent;
+  }
+
+  .month-item:hover {
+    background: rgba(255,255,255,0.05);
+    color: #fff;
+  }
+
+  .month-item.active {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .month-item.has-invoice {
+    color: rgba(255,255,255,0.8);
+  }
+</style>
+{% endblock %}
+
 
 {% block content %}
-<div class="page-header flex justify-between items-end">
-  <div>
-    <h1>Vencimento: {{ mostra_data(fatura.data_vencimento) }}</h1>
-    <p>Compras e lançamentos neste ciclo de faturamento.</p>
-  </div>
-  <div class="flex gap-2">
-    {% if not fatura.fechado %}
-    <button class="btn btn-primary" onclick="openModal('modalNovoLancamentoFatura')">
-      <i class="fas fa-plus mr-1"></i> Lançamento
-    </button>
-    <button class="btn btn-success" onclick="openModal('modalAdicionarPagamento')">
-      <i class="fas fa-hand-holding-usd mr-1"></i> Pagar Fatura
-    </button>
-    <div class="badge badge-warning" style="font-size: 14px; padding: 8px 16px; display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2;">
-      <span>ABERTA</span>
-      <a href="/faturas/{{ fatura.fatura_id }}/fechar" style="font-size: 10px; color: #fff; text-decoration: underline; margin-top: 4px; font-weight: 600;">
-         Fechar Fatura
+<div class="fatura-layout">
+  
+  <!-- SIDEBAR: Estatísticas e Navegação -->
+  <aside class="fatura-sidebar">
+    
+    <!-- Bloco Mini-Identificador do Cartão -->
+    <div class="fatura-header-card">
+      <div class="flex items-center gap-3">
+        <div style="width: 40px; height: 40px; background: #612f74; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff; font-size: 12px;">nu</div>
+        <div>
+          <h4 style="margin: 0; font-size: 16px;">{{ fatura.cartao.nome_conta }}</h4>
+          <span class="text-muted" style="font-size: 11px;">Crédito</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navegação de Mês -->
+    <div class="month-picker">
+      <div class="nav-arrows-group">
+        {% if id_anterior %}
+          <a href="/faturas/{{ id_anterior }}" class="nav-arrow" title="Anterior">&lsaquo;</a>
+        {% else %}
+          <span class="nav-arrow disabled">&lsaquo;</span>
+        {% endif %}
+
+        <span class="current-month" style="cursor: pointer;" onclick="openModal('modalIndiceMeses')">{{ mes_venc_pt }}</span>
+
+        {% if id_proxima %}
+          <a href="/faturas/{{ id_proxima }}" class="nav-arrow" title="Próxima">&rsaquo;</a>
+        {% else %}
+          <span class="nav-arrow disabled">&rsaquo;</span>
+        {% endif %}
+      </div>
+      <a href="/faturas/{{ id_atual_logica }}" title="Ir para Fatura Atual">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6; margin-right: 10px; color: var(--primary);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       </a>
     </div>
-    {% else %}
-    <div class="badge badge-info" style="font-size: 14px; padding: 8px 16px;">
-      FECHADA
-    </div>
-    {% endif %}
-  </div>
-</div>
 
-<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
-  <div class="stat-card danger">
-    <div class="stat-label">Valor Total</div>
-    <div class="stat-value">{{ formata_moeda((fatura.valor_total)) }}</div>
-  </div>
-  <div class="stat-card ">
-    <div class="stat-label">Data de Fechamento</div>
-    <div class="stat-value" style="font-size: 18px;">{{ mostra_data(fatura.data_fechamento) }}</div>
-  </div>
-  <div class="stat-card success">
-    <div class="stat-label">Navegar Entre Faturas</div>
-    <div class="stat-value" style="font-size: 18px;">
-      {% if id_anterior %}
-        <a href="/faturas/{{ id_anterior }}" style="color:#E2E8E4">
-          < Anterior
-        </a>
-      {% else %}
-        < Anterior
-      {% endif %}
-      | 
-      {% if id_atual_logica %}
-        <a href="/faturas/{{ id_atual_logica }}" style="color:#E2E8E4">
-          Atual
-        </a>
-      {% else %}
-        Atual
-      {% endif %}
-
-      | 
-      {% if id_proxima %}
-        <a href="/faturas/{{ id_proxima }}" style="color:#E2E8E4">
-          Próxima >
-        </a>
-      {% else %}
-        Próxima >
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-<div class="card p-0 overflow-hidden">
-  <div class="table-wrapper">
-    <table>
-      <thead>
+    <!-- Bloco: Fatura Atual -->
+    <div class="sidebar-block">
+      <div class="sidebar-block-title">Fatura Atual (R$)</div>
+      <table class="summary-table">
         <tr>
-          <th>Data</th>
-          <th>Descrição</th>
-          <th class="text-right">Valor</th>
-          <th width="120" class="text-right">Ações</th>
+          <td class="label-muted">Fechamento</td>
+          <td>{{ mostra_data(fatura.data_fechamento) }}</td>
         </tr>
-      </thead>
-      <tbody>
-        {% for op in operacoes %}
         <tr>
-          <td>{{ mostra_data(op.operacoes_data_lancamento) }}</td>
-          <td>
-            <div class="flex flex-col">
-              <span class="font-bold">{{ op.operacoes_descricao }}</span>
-              {% if op.operacoes_parcela %}
-                <span class="text-muted" style="font-size: 11px;">Parcela {{ formata_parcela(op.operacoes_parcela) }}</span>
-              {% endif %}
-            </div>
-          </td>
-          <td class="text-right font-bold text-danger">{{ formata_moeda(op.operacoes_valor) }}</td>
-          <td class="text-right">
-            <div class="flex gap-2 justify-end">
-              <button class="btn btn-outline btn-xs" title="Duplicar"
-                      data-id="{{ op.operacoes_id }}"
-                      data-desc="{{ op.operacoes_descricao }}"
-                      data-valor="{{ op.operacoes_valor }}"
-                      data-tipo="{{ op.operacoes_tipo }}"
-                      data-data="{{ op.operacoes_data_lancamento }}"
-                      data-cat="{{ op.operacoes_categoria or '' }}"
-                      data-conta="{{ op.operacoes_conta }}"
-                      onclick="openDuplicateModal(this)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              </button>
-
-              <button class="btn btn-outline btn-xs" title="Editar"
-                      data-id="{{ op.operacoes_id }}"
-                      data-tipo="{{ op.operacoes_tipo }}"
-                      data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
-                      data-parcela="{{ op.operacoes_parcela or '' }}"
-                      data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
-                      onclick="openEditOpModal(this)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
-              
-              <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:inline;">
-                <button type="submit" class="btn btn-outline btn-xs text-danger" title="Excluir">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                </button>
-              </form>
-            </div>
-          </td>
+          <td class="label-muted">Vencimento</td>
+          <td>{{ mostra_data(fatura.data_vencimento) }}</td>
         </tr>
-        
-        {% else %}
-        <tr><td colspan="3" class="text-center p-6 text-muted">Nenhum lançamento nesta fatura.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        <tr>
+          <td class="label-muted">Saldo anterior</td>
+          <td>{{ formata_moeda(stats.saldo_anterior) }}</td>
+        </tr>
+        <tr>
+          <td class="label-muted">Total pago</td>
+          <td class="text-success">{{ formata_moeda(stats.total_pago) }}</td>
+        </tr>
+        <tr style="font-weight: 700; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <td style="color: var(--danger);">Total</td>
+          <td style="color: var(--danger);">{{ formata_moeda(fatura.valor_total) }}</td>
+        </tr>
+        <tr>
+          <td class="label-muted">Valor a pagar</td>
+          <td style="color: var(--danger);">{{ formata_moeda(fatura.valor_total) }}</td>
+        </tr>
+      </table>
+
+      <div class="flex flex-col gap-2 mt-4">
+        {% if not fatura.fechado %}
+          <button class="btn btn-success btn-sm w-full" onclick="openModal('modalAdicionarPagamento')">Lançar pagamento</button>
+          <a href="/faturas/{{ fatura.fatura_id }}/fechar" class="btn btn-outline btn-sm w-full text-center">Fechar fatura</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Bloco: Detalhes -->
+    <div class="sidebar-block">
+      <div class="sidebar-block-title">Detalhamento</div>
+      <table class="summary-table">
+        <tr>
+          <td class="label-muted">Despesas</td>
+          <td>{{ formata_moeda(stats.despesas) }}</td>
+        </tr>
+        <tr>
+          <td class="label-muted">Total conciliado</td>
+          <td class="text-success">{{ formata_moeda(stats.total_conciliado) }}</td>
+        </tr>
+        <tr>
+          <td class="label-muted">Não conciliado</td>
+          <td class="text-warning">{{ formata_moeda(stats.total_nao_conciliado) }}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Bloco: Limite -->
+    <div class="sidebar-block">
+      <div class="sidebar-block-title">Limite (Total)</div>
+      <table class="summary-table">
+        <tr>
+          <td class="label-muted">Limite da conta</td>
+          <td>{{ formata_moeda(limite_info.limite) }}</td>
+        </tr>
+        <tr>
+          <td class="label-muted">Utilizado</td>
+          <td class="text-danger">{{ formata_moeda(limite_info.utilizado) }}</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td class="label-muted">Disponível</td>
+          <td class="text-success">{{ formata_moeda(limite_info.disponivel) }}</td>
+        </tr>
+      </table>
+    </div>
+
+  </aside>
+
+  <!-- ÁREA PRINCIPAL: Lista de Lançamentos -->
+  <main class="fatura-main">
     
-  </div>
+    <div class="list-toolbar">
+      <div class="search-wrapper">
+        <svg style="position: absolute; left: 12px; top: 12px; opacity: 0.3;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="transfSearchInput" class="search-input" placeholder="Filtrar por descrição..." onkeyup="filterTable()">
+      </div>
+      
+      <div class="filter-tabs">
+        <button class="filter-tab active" onclick="setConciliadoFilter('all', this)">Todos</button>
+        <button class="filter-tab" onclick="setConciliadoFilter('1', this)">Conciliados</button>
+        <button class="filter-tab" onclick="setConciliadoFilter('0', this)">Pendentes</button>
+      </div>
+
+      <button class="btn btn-primary btn-sm" onclick="openModal('modalNovoLancamentoFatura')">
+        <i class="fas fa-plus"></i> Novo
+      </button>
+    </div>
+
+    <div class="card p-0 overflow-hidden" style="border: 1px solid rgba(255,255,255,0.05); background: transparent;">
+      <div class="table-wrapper">
+        <table id="tabelaFatura">
+          <thead>
+            <tr style="background: rgba(255,255,255,0.02);">
+              <th width="30">
+                <input type="checkbox" class="checkbox-custom" id="selectAllFatura" onclick="toggleSelectAll(this)">
+              </th>
+              <th width="80">Data</th>
+              <th>Descrição</th>
+              <th class="text-right">Valor</th>
+              <th width="80" class="text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for op in operacoes %}
+            <tr class="fatura-row" data-conciliado="{{ op.operacoes_efetivado }}">
+              <td>
+                <input type="checkbox" class="checkbox-custom row-checkbox" data-id="{{ op.operacoes_id }}" onclick="toggleRowSelection()">
+              </td>
+              <td class="text-muted" style="font-size: 13px;">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+              <td>
+                <div class="flex items-center gap-2">
+                  <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }}; box-shadow: 0 0 5px {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }};" title="{{ 'Conciliado' if op.operacoes_efetivado else 'Pendente' }}"></div>
+                  <div class="flex flex-col">
+                    <span class="font-bold">{{ op.operacoes_descricao }}</span>
+                    {% if op.operacoes_parcela %}
+                      <span class="text-muted" style="font-size: 10px;">{{ formata_parcela(op.operacoes_parcela) }}</span>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td class="text-right font-bold {{ 'text-danger' if op.operacoes_valor < 0 else 'text-success' }}" style="font-family: 'JetBrains Mono', monospace;">
+                {{ formata_moeda(op.operacoes_valor) }}
+              </td>
+              <td class="text-right">
+                <div class="dropdown-kebab">
+                  <button class="kebab-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                    </svg>
+                  </button>
+                  <div class="dropdown-content">
+                    <button type="button" 
+                            data-id="{{ op.operacoes_id }}"
+                            data-desc="{{ op.operacoes_descricao }}"
+                            data-valor="{{ op.operacoes_valor }}"
+                            data-tipo="{{ op.operacoes_tipo }}"
+                            data-data="{{ op.operacoes_data_lancamento }}"
+                            data-cat="{{ op.operacoes_categoria or '' }}"
+                            data-conta="{{ op.operacoes_conta }}"
+                            onclick="openDuplicateModal(this)">
+                      Duplicar
+                    </button>
+                    <button type="button"
+                            data-id="{{ op.operacoes_id }}"
+                            data-tipo="{{ op.operacoes_tipo }}"
+                            data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                            data-parcela="{{ op.operacoes_parcela or '' }}"
+                            data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                            onclick="openEditOpModal(this)">
+                      Editar
+                    </button>
+                    <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:block;">
+                      <button type="submit" class="text-danger">Excluir</button>
+                    </form>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center p-10 text-muted">Nenhum lançamento encontrado nesta fatura.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
 </div>
 
-
-
-
-
-
-
-
-
+<div id="bulkActionsBar" class="bulk-actions-bar">
+  <span class="bulk-count"><span id="selectedCount">0</span> lançamentos</span>
+  <div class="flex gap-2">
+    <button class="btn btn-primary btn-sm" onclick="bulkConciliar()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><polyline points="20 6 9 17 4 12"/></svg>
+      Conciliar
+    </button>
+    <button class="btn btn-outline btn-sm text-danger" onclick="bulkDelete()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      Excluir
+    </button>
+  </div>
+</div>
 
 <!-- MODAL: NOVO LANÇAMENTO NA FATURA -->
 <div class="modal-backdrop" id="modalNovoLancamentoFatura">
@@ -154,7 +460,6 @@
       <button class="modal-close" onclick="closeModal('modalNovoLancamentoFatura')">&times;</button>
     </div>
     <form action="/lancamentos/inserir" method="post">
-      <input type="hidden" name="fatura" value="{{ fatura.fatura_id }}">
       <input type="hidden" name="conta" value="{{ fatura.conta_id }}">
       <input type="hidden" name="tipo" value="3"> <!-- Sempre Despesa por padrão em fatura -->
       
@@ -171,6 +476,30 @@
         <div class="form-group">
           <label class="form-label">Data</label>
           <input type="date" name="data" class="form-control" value="{{ date_today() }}" required>
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Categoria</label>
+          <select name="categoria" class="form-control">
+            <option value="-1">Sem Categoria</option>
+            {% for cat in categorias if cat.categorias_classe in [0, 3, None] %}
+            <option value="{{ cat.categorias_id }}">
+              {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vincular à Fatura</label>
+          <select name="fatura" class="form-control">
+            {% for f_idx in indice_faturas %}
+            <option value="{{ f_idx.id }}" {{ 'selected' if f_idx.id == fatura.fatura_id else '' }}>
+              {{ f_idx.nome_abreviado }} / {{ f_idx.ano }} {{ '(Aberta)' if not f_idx.fechado else '(Fechada)' }}
+            </option>
+            {% endfor %}
+          </select>
         </div>
       </div>
 
@@ -347,8 +676,14 @@
           <select name="categoria" id="edit_cat" class="form-control">
             <option value="">Sem Categoria</option>
             {% for cat in categorias %}
-            <option value="{{ cat.categorias_id }}">{{ cat.categorias_nome }}</option>
+            <!-- <option value="{{ cat.categorias_id }}">{{ cat.categorias_nome }}</option> -->
+            <option value="{{ cat.categorias_id }}">
+              {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+            </option>
             {% endfor %}
+
+            
+          
           </select>
         </div>
         <div class="form-group">
@@ -477,6 +812,34 @@ async function openEditOpModal(btn) {
   }
 }
 
+let currentConciliadoFilter = 'all';
+
+function filterTable() {
+  const input = document.getElementById('transfSearchInput');
+  const filter = input.value.toLowerCase();
+  const rows = document.querySelectorAll('.fatura-row');
+
+  rows.forEach(row => {
+    const desc = row.querySelector('.font-bold').innerText.toLowerCase();
+    const matchesSearch = desc.includes(filter);
+    const concValue = row.dataset.conciliado;
+    const matchesFilter = (currentConciliadoFilter === 'all' || concValue === currentConciliadoFilter);
+
+    if (matchesSearch && matchesFilter) {
+      row.style.display = 'table-row';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+function setConciliadoFilter(val, btn) {
+  currentConciliadoFilter = val;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  filterTable();
+}
+
 function openDuplicateModal(btn) {
   const d = btn.dataset;
   const modal = document.getElementById('modalEditarLancamento');
@@ -499,7 +862,103 @@ function openDuplicateModal(btn) {
   else document.getElementById('edit_tipo_despesa').checked = true;
 
   form.style.display = '';
+  form.style.display = '';
   openModal('modalEditarLancamento');
 }
+
+function toggleSelectAll(cb) {
+  const checkboxes = document.querySelectorAll('.row-checkbox');
+  checkboxes.forEach(c => c.checked = cb.checked);
+  toggleRowSelection();
+}
+
+function toggleRowSelection() {
+  const selected = document.querySelectorAll('.row-checkbox:checked');
+  const bar = document.getElementById('bulkActionsBar');
+  const count = document.getElementById('selectedCount');
+  
+  if (selected.length > 0) {
+    bar.classList.add('active');
+    count.innerText = selected.length;
+  } else {
+    bar.classList.remove('active');
+    document.getElementById('selectAllFatura').checked = false;
+  }
+}
+
+async function bulkDelete() {
+  if (!confirm('Excluir todos os lançamentos selecionados?')) return;
+  const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+  
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/lancamentos/deletar-massa';
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'ids';
+  input.value = JSON.stringify(ids);
+  
+  // Adiciona a URL de retorno
+  const inputBack = document.createElement('input');
+  inputBack.type = 'hidden';
+  inputBack.name = 'back_url';
+  inputBack.value = window.location.pathname;
+  
+  form.appendChild(input);
+  form.appendChild(inputBack);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+async function bulkConciliar() {
+  const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/lancamentos/conciliar-massa';
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'ids';
+  input.value = JSON.stringify(ids);
+  
+  const inputBack = document.createElement('input');
+  inputBack.type = 'hidden';
+  inputBack.name = 'back_url';
+  inputBack.value = window.location.pathname;
+  
+  form.appendChild(input);
+  form.appendChild(inputBack);
+  document.body.appendChild(form);
+  form.submit();
+}
 </script>
+
+<!-- MODAL: ÍNDICE DE MESES -->
+<div class="modal-backdrop" id="modalIndiceMeses">
+  <div class="modal" style="max-width: 450px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Selecionar Mês</h2>
+      <button class="modal-close" onclick="closeModal('modalIndiceMeses')">&times;</button>
+    </div>
+    <div class="p-6">
+      <div class="flex justify-between items-center mb-6 px-4">
+        <button class="btn btn-icon opacity-30" disabled>&lsaquo;</button>
+        <span style="font-weight: 800; font-size: 18px; letter-spacing: 1px; color: #fff;">{{ fatura.data_vencimento.year if fatura.data_vencimento else '2026' }}</span>
+        <button class="btn btn-icon opacity-30" disabled>&rsaquo;</button>
+      </div>
+      <div class="month-index-grid">
+        {% set meses_nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'] %}
+        {% for m_index in range(1, 13) %}
+          {% set f_mes = indice_faturas | selectattr("mes", "equalto", m_index) | first %}
+          {% if f_mes %}
+            <a href="/faturas/{{ f_mes.id }}" class="month-item has-invoice {{ 'active' if f_mes.id == fatura.fatura_id else '' }}">
+              {{ f_mes.nome_abreviado | lower }}
+            </a>
+          {% else %}
+            <span class="month-item" style="opacity: 0.15; cursor: default;">{{ meses_nomes[m_index-1] }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

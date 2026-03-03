@@ -165,13 +165,16 @@
     <table>
       <thead>
         <tr>
-          <th width="40"></th>
+        <tr>
+          <th width="40" class="text-center">
+            <input type="checkbox" class="checkbox-custom" id="selectAllExtrato" onclick="toggleSelectAll(this)">
+          </th>
           <th>Data</th>
           {% if not conta_id %}<th>Conta</th>{% endif %}
           <th>Descrição</th>
           <th>Categoria</th>
           <th class="text-right">Valor</th>
-          <th width="120">Ações</th>
+          <th width="60" class="text-right">Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -180,16 +183,21 @@
         {% set is_atrasado = (not is_efetivado and op.operacoes_data_lancamento < hoje) %}
         <tr class="{% if is_efetivado %}op-efetivado{% else %}op-pendente{% endif %} {% if is_atrasado %}op-atrasada{% endif %}">
           <td class="text-center">
-            {% if is_atrasado %}<div style="color: var(--danger); font-size: 10px; font-weight: 800; margin-bottom: 2px;">VENCIDO</div>{% endif %}
-            {% if op.operacoes_tipo == 1 %}
-              <svg width="14" height="14" class="text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
-            {% elif op.operacoes_tipo == 3 %}
-              <svg width="14" height="14" class="text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
-            {% else %}
-              <svg width="14" height="14" class="text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            {% endif %}
+            <input type="checkbox" class="checkbox-custom row-checkbox" data-id="{{ op.operacoes_id }}" onclick="toggleRowSelection()">
           </td>
-          <td class="nowrap">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+          <td class="nowrap">
+            <div class="flex items-center gap-2">
+              {% if is_atrasado %}<div style="color: var(--danger); font-size: 10px; font-weight: 800;">VENCIDO</div>{% endif %}
+              {% if op.operacoes_tipo == 1 %}
+                <svg width="14" height="14" class="text-success inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"/></svg>
+              {% elif op.operacoes_tipo == 3 %}
+                <svg width="14" height="14" class="text-danger inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>
+              {% else %}
+                <svg width="14" height="14" class="text-accent inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              {% endif %}
+              <span>{{ mostra_data(op.operacoes_data_lancamento) }}</span>
+            </div>
+          </td>
           {% if not conta_id %}
           <td>
             <span class="badge badge-outline" style="font-size: 10px;">{{ op.conta.nome_conta }}</span>
@@ -220,43 +228,39 @@
           <td class="text-right font-bold {{ cor_valor(op.operacoes_valor) if op.operacoes_efetivado else '' }}">
             {{ formata_moeda(op.operacoes_valor) }}
           </td>
-          <td>
-            <div class="flex gap-2 justify-end">
-              {% if not op.operacoes_efetivado %}
-              <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post" style="display:inline;">
-                <button type="submit" class="btn btn-outline btn-xs text-success" title="Efetivar">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                </button>
-              </form>
-              {% endif %}
-              
-              <button class="btn btn-outline btn-xs" title="Duplicar"
-                      data-id="{{ op.operacoes_id }}"
-                      data-desc="{{ op.operacoes_descricao }}"
-                      data-valor="{{ op.operacoes_valor }}"
-                      data-tipo="{{ op.operacoes_tipo }}"
-                      data-data="{{ op.operacoes_data_lancamento }}"
-                      data-cat="{{ op.operacoes_categoria or '' }}"
-                      data-conta="{{ op.operacoes_conta }}"
-                      onclick="openDuplicateModal(this)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <td class="text-right">
+            <div class="dropdown-kebab">
+              <button class="kebab-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
               </button>
-
-              <button class="btn btn-outline btn-xs" title="Editar"
-                      data-id="{{ op.operacoes_id }}"
-                      data-tipo="{{ op.operacoes_tipo }}"
-                      data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
-                      data-parcela="{{ op.operacoes_parcela or '' }}"
-                      data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
-                      onclick="openEditOpModal(this)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
-              
-              <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:inline;">
-                <button type="submit" class="btn btn-outline btn-xs text-danger" title="Excluir">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                </button>
-              </form>
+              <div class="dropdown-content">
+                {% if not op.operacoes_efetivado %}
+                <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post" style="margin:0;">
+                  <button type="submit" class="text-success" style="text-align: left;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="display:inline;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg> Efetivar
+                  </button>
+                </form>
+                {% endif %}
+                <button type="button"
+                  data-id="{{ op.operacoes_id }}"
+                  data-tipo="{{ op.operacoes_tipo }}"
+                  data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                  data-parcela="{{ op.operacoes_parcela or '' }}"
+                  data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                  onclick="openEditOpModal(this)">Editar</button>
+                <button type="button"
+                  data-id="{{ op.operacoes_id }}"
+                  data-desc="{{ op.operacoes_descricao }}"
+                  data-valor="{{ op.operacoes_valor }}"
+                  data-tipo="{{ op.operacoes_tipo }}"
+                  data-data="{{ op.operacoes_data_lancamento }}"
+                  data-cat="{{ op.operacoes_categoria or '' }}"
+                  data-conta="{{ op.operacoes_conta }}"
+                  onclick="openDuplicateModal(this)">Duplicar</button>
+                <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="margin:0;">
+                  <button type="submit" class="text-danger" style="text-align: left;">Excluir</button>
+                </form>
+              </div>
             </div>
           </td>
         </tr>
@@ -268,6 +272,17 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<!-- Barra Ações em Massa Flutuante -->
+<div class="bulk-actions-bar" id="bulkActionsBar">
+  <div class="bulk-count"><span id="selectedCount">0</span> selecionados</div>
+  <button class="btn btn-primary btn-sm" onclick="bulkConciliar()">
+    Efetivar Todos
+  </button>
+  <button class="btn btn-outline btn-sm text-danger" onclick="bulkDelete()" style="border-color: rgba(244, 63, 94, 0.3);">
+    Excluir
+  </button>
 </div>
 
 <!-- Removido <style> block pois foi movido para main.css -->
@@ -923,6 +938,75 @@
     const modo = document.querySelector('input[name="modo_repeticao"]:checked').value;
     document.getElementById('divParcelado').style.display = (modo === 'parcelado') ? "" : "none";
     document.getElementById('divRecorrente').style.display = (modo === 'recorrente') ? "" : "none";
+  }
+
+  // Ações em massa
+  function toggleSelectAll(cb) {
+    const checkboxes = document.querySelectorAll('.row-checkbox');
+    checkboxes.forEach(c => c.checked = cb.checked);
+    toggleRowSelection();
+  }
+
+  function toggleRowSelection() {
+    const selected = document.querySelectorAll('.row-checkbox:checked');
+    const bar = document.getElementById('bulkActionsBar');
+    const count = document.getElementById('selectedCount');
+    
+    if (selected.length > 0) {
+      bar.classList.add('active');
+      count.innerText = selected.length;
+    } else {
+      bar.classList.remove('active');
+      const sa = document.getElementById('selectAllExtrato');
+      if (sa) sa.checked = false;
+    }
+  }
+
+  async function bulkDelete() {
+    if (!confirm('Excluir todos os lançamentos selecionados?')) return;
+    const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/lancamentos/deletar-massa';
+    
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids';
+    input.value = JSON.stringify(ids);
+    
+    const inputBack = document.createElement('input');
+    inputBack.type = 'hidden';
+    inputBack.name = 'back_url';
+    inputBack.value = window.location.pathname + window.location.search;
+    
+    form.appendChild(input);
+    form.appendChild(inputBack);
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  async function bulkConciliar() {
+    const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/lancamentos/conciliar-massa';
+    
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids';
+    input.value = JSON.stringify(ids);
+    
+    const inputBack = document.createElement('input');
+    inputBack.type = 'hidden';
+    inputBack.name = 'back_url';
+    inputBack.value = window.location.pathname + window.location.search;
+    
+    form.appendChild(input);
+    form.appendChild(inputBack);
+    document.body.appendChild(form);
+    form.submit();
   }
 </script>
 {% endblock %}

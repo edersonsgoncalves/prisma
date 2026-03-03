@@ -225,7 +225,17 @@
 ════════════════════════════════════════════ -->
 <div class="ofx-sec" id="sec-3">
   <div class="card" style="padding:24px; margin-bottom:16px;">
-    <h3 style="margin:0 0 20px;">Resumo da importação</h3>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+      <h3 style="margin:0;">Resumo da importação</h3>
+      <label class="switch-wrapper" style="font-size:12px; margin:0;">
+        <span class="switch-label label-nao text-muted" style="margin-right:8px;">Importar pendentes</span>
+        <div class="switch">
+          <input type="checkbox" id="checkImportarEfetivado" checked>
+          <span class="slider"></span>
+        </div>
+        <span class="switch-label label-sim" style="margin-left:8px; font-weight:600; color:var(--primary);">Importar como Efetivados</span>
+      </label>
+    </div>
 
     <div class="ofx-stats" style="margin-bottom:20px;">
       <div class="ofx-stat"><div class="ofx-stat-val" id="c-ef" style="color:var(--primary)">0</div><div class="ofx-stat-lbl">Efetivar</div></div>
@@ -659,6 +669,7 @@ async function executarImportacao() {
   let ef=0, ins=0, ign=0, erros=0;
   const log = [];
   const total = ofxTransacoes.length;
+  const comoEfetivado = document.getElementById('checkImportarEfetivado').checked;
 
   for (let i = 0; i < total; i++) {
     const t   = ofxTransacoes[i];
@@ -683,6 +694,7 @@ async function executarImportacao() {
           memo:     t.memo,
           match_id: t.matchDb ? t.matchDb.id : null,
           conta_id: contaId ? parseInt(contaId) : null,
+          como_efetivado: comoEfetivado,
         }),
       });
       const data = await r.json();

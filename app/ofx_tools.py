@@ -61,6 +61,7 @@ class EfetivarPayload(BaseModel):
     memo: Optional[str] = None
     match_id: Optional[int] = None   # operacoes_id do lançamento existente
     conta_id: Optional[int] = None   # conta_id de contas_bancarias
+    como_efetivado: bool = True      # status de conciliação
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -132,8 +133,11 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
         if not op:
             raise ValueError(f"Operação {payload.match_id} não encontrada.")
 
-        op.operacoes_efetivado        = 1
-        op.operacoes_data_efetivado   = datetime.combine(data_lancamento, datetime.min.time())
+        op.operacoes_efetivado        = 1 if payload.como_efetivado else 0
+        if payload.como_efetivado:
+            op.operacoes_data_efetivado = datetime.combine(data_lancamento, datetime.min.time())
+        else:
+            op.operacoes_data_efetivado = None
         op.operacoes_fitid            = payload.fitid   # requer migration (ver docstring)
         db.commit()
         return {"status": "efetivado", "id": op.operacoes_id}
@@ -157,8 +161,8 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             operacoes_conta           = conta.conta_id,
             operacoes_valor           = abs(payload.valor),
             operacoes_tipo            = tipo_int,
-            operacoes_efetivado       = 1,
-            operacoes_data_efetivado  = datetime.combine(data_lancamento, datetime.min.time()),
+            operacoes_efetivado       = 1 if payload.como_efetivado else 0,
+            operacoes_data_efetivado  = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None,
             operacoes_fitid           = payload.fitid,   # requer migration
             operacoes_validacao       = 1,
         )
