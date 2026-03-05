@@ -140,13 +140,17 @@ async def detalhe_fatura(
     if fatura.data_vencimento:
         mes_venc_pt = f"{MESES_PT_COMPLETO[fatura.data_vencimento.month]} {fatura.data_vencimento.year}"
 
-    operacoes = (
+    operacoes_todas = (
         db.query(Operacao)
         .options(joinedload(Operacao.adicional), joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta))
         .filter(Operacao.operacoes_fatura == fatura_id, Operacao.operacoes_validacao == 1)
         .order_by(Operacao.operacoes_data_lancamento)
         .all()
     )
+
+    # Separação: Lançamentos normais vs Pagamentos de Fatura (Tipo 0)
+    pagamentos = [op for op in operacoes_todas if op.operacoes_tipo == 0]
+    operacoes = [op for op in operacoes_todas if op.operacoes_tipo != 0]
     
     # Agrupamento para a UI: Evita erro de 'NoneType' vs 'int' no Jinja2
     # Ordenamos primeiro por adicional_id (None -> 0) e depois por data
@@ -172,6 +176,7 @@ async def detalhe_fatura(
         "despesas": Decimal("0.00"),
         "total_conciliado": Decimal("0.00"),
         "total_nao_conciliado": Decimal("0.00"),
+        "total_fatura": Decimal("0.00"),
     }
     
     if fatura_anterior:
@@ -179,11 +184,19 @@ async def detalhe_fatura(
         if f_ant:
             stats["saldo_anterior"] = f_ant.valor_total or Decimal("0.00")
 
-    # Soma de pagamentos (entradas positivas via transferência na fatura)
+    # Calcula valor total da fatura
+    stats["total_fatura"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
+        Operacao.operacoes_fatura == fatura_id,
+        Operacao.operacoes_valor < 0,
+        Operacao.operacoes_tipo !=0,
+        Operacao.operacoes_validacao == 1
+    ).scalar() or Decimal("0.00")
+
+    # Soma de pagamentos (Tipos 0 e 4 para manter compatibilidade)
     stats["total_pago"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
         Operacao.operacoes_fatura == fatura_id,
         Operacao.operacoes_valor > 0,
-        Operacao.operacoes_tipo == "4",
+        Operacao.operacoes_tipo.in_([0, 4]),
         Operacao.operacoes_validacao == 1
     ).scalar() or Decimal("0.00")
 
@@ -198,13 +211,13 @@ async def detalhe_fatura(
     stats["total_conciliado"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
         Operacao.operacoes_fatura == fatura_id,
         Operacao.operacoes_efetivado == 1,
-        Operacao.operacoes_validacao == 1
+        Operacao.operacoes_tipo != 0
     ).scalar() or Decimal("0.00")
 
     stats["total_nao_conciliado"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
         Operacao.operacoes_fatura == fatura_id,
         Operacao.operacoes_efetivado == 0,
-        Operacao.operacoes_validacao == 1
+        Operacao.operacoes_tipo != 0
     ).scalar() or Decimal("0.00")
 
     # Informações de Limite
@@ -239,6 +252,7 @@ async def detalhe_fatura(
         "mes_venc_pt": mes_venc_pt,
         "faturas_todas": faturas_do_cartao,
         "operacoes_agrupadas": operacoes_agrupadas,
+        "pagamentos": pagamentos,
     })
 
 @router.get("/{fatura_id}/fechar")
@@ -338,9 +352,8 @@ async def pagar_fatura(
         operacoes_data_lancamento=dt_operacao,
         operacoes_descricao=descricao,
         operacoes_conta=conta_cartao_id,
-        operacoes_valor=valor_float,
-        operacoes_tipo="4", # Transferência
         operacoes_fatura=fatura.fatura_id, # Vincula à fatura
+        operacoes_tipo=0, # Pagamento de Fatura (TipoEspecial)
         operacoes_efetivado=1,
         operacoes_data_efetivado=datetime.now(),
         operacoes_validacao=1

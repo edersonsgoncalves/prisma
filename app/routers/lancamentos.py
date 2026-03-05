@@ -162,9 +162,10 @@ async def inserir_transferencia(
     num_parcelas: Optional[int] = Form(default=2),
     frequencia: Optional[str] = Form(default="mensal"),
     ocorrencias: Optional[int] = Form(default=12),
+    adicional_id: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
-):
+) :
 
     conta_origem_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
     conta_destino_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_destino).first()
@@ -177,23 +178,18 @@ async def inserir_transferencia(
     valor_float = float(valor_limpo)
     valor_final = valor_float
 
-    # Converte categoria e fatura para int ou None (lidando com strings vazias do form)
+    # Converte fatura para int ou None (lidando com strings vazias do form)
     fat_id = int(fatura) if fatura and fatura.strip() else None
 
-    # Se for cartão, a conta da operação deve ser o próprio cartão (fat_id)
-    if fat_id:
-        conta = fat_id
-
+    # NOTA: não sobrescrevemos 'conta' com fat_id — conta é o conta_id real do cartão
     parcela_str = None
     if parcela_atual and parcela_total:
         parcela_str = f"{parcela_atual:03d}.{parcela_total:03d}"
 
     dt_operacao = date.fromisoformat(data)
-    
-    # Lógica de Fatura Inteligente
+
+    # Lógica de Fatura Inteligente: usa fat_id como base para localizar a fatura correta
     final_fat_id = fat_id
-    if fat_id:
-        final_fat_id = get_or_create_fatura(db, conta, dt_operacao)
 
     dt_efetivado = None
     if efetivado:
@@ -261,7 +257,8 @@ async def inserir_transferencia(
             operacoes_efetivado=curr_efetivado,
             operacoes_data_efetivado=curr_dt_efetivado,
             operacoes_validacao=1,
-            operacoes_grupo_id=grupo_id
+            operacoes_grupo_id=grupo_id,
+            operacoes_adicional_id=adicional_id
         )
         op_entrada = Operacao(
             operacoes_data_lancamento=curr_dt,
@@ -274,7 +271,8 @@ async def inserir_transferencia(
             operacoes_efetivado=curr_efetivado,
             operacoes_data_efetivado=curr_dt_efetivado,
             operacoes_validacao=1,
-            operacoes_grupo_id=grupo_id
+            operacoes_grupo_id=grupo_id,
+            operacoes_adicional_id=adicional_id
         )
         db.add(op_saida); db.add(op_entrada); db.flush()
 

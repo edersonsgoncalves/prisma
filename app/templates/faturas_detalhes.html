@@ -71,6 +71,46 @@
 
   .label-muted { color: rgba(255,255,255,0.6); }
 
+  /* Destaque de Pagamentos na Sidebar */
+  .sidebar-payments {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .payment-card {
+    background: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: 0.2s;
+  }
+  .payment-card:hover {
+    background: rgba(34, 197, 94, 0.08);
+  }
+  .payment-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .payment-desc {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .payment-date {
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+  }
+  .payment-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: var(--success);
+    font-size: 14px;
+  }
+
   /* Navegação Retrô */
   .month-picker {
     display: flex;
@@ -468,21 +508,41 @@
         </tr>
         <tr style="font-weight: 700; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1);">
           <td style="color: var(--danger);">Total</td>
-          <td style="color: var(--danger);">{{ formata_moeda(fatura.valor_total) }}</td>
+          <td style="color: var(--danger);">{{ formata_moeda(stats.total_fatura) }}</td>
         </tr>
         <tr>
           <td class="label-muted">Valor a pagar</td>
-          <td style="color: var(--danger);">{{ formata_moeda(fatura.valor_total) }}</td>
+          <td style="color: var(--danger);">{{ formata_moeda(stats.total_fatura + (stats.saldo_anterior + stats.total_pago)) }}</td>
         </tr>
       </table>
 
       <div class="flex flex-col gap-2 mt-4">
         {% if not fatura.fechado %}
-          <button class="btn btn-success btn-sm w-full" onclick="openModal('modalAdicionarPagamento')">Lançar pagamento</button>
+          <button class="btn btn-outline btn-sm w-full" onclick="openModal('modalAdicionarPagamento')">Lançar pagamento</button>
           <a href="/faturas/{{ fatura.fatura_id }}/fechar" class="btn btn-outline btn-sm w-full text-center">Fechar fatura</a>
         {% endif %}
       </div>
     </div>
+
+    <!-- Bloco: Pagamentos Efetuados -->
+    {% if pagamentos %}
+    <div class="sidebar-block">
+      <div class="sidebar-block-title">Pagamentos Efetuados</div>
+      <div class="sidebar-payments">
+        {% for p in pagamentos %}
+        <div class="payment-card">
+          <div class="payment-info">
+            <span class="payment-desc">{{ p.operacoes_descricao }}</span>
+            <span class="payment-date">{{ mostra_data(p.operacoes_data_lancamento) }}</span>
+          </div>
+          <div class="payment-value">
+            {{ formata_moeda(p.operacoes_valor) }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Bloco: Detalhes -->
     <div class="sidebar-block">
@@ -547,7 +607,7 @@
         <div class="dropdown-novo-content" id="dropdownNovo">
           <button onclick="openModal('modalNovoLancamentoFatura')">
             <i class="fas fa-file-invoice-dollar" style="color: var(--primary);"></i>
-            Lançamento (R/D)
+            Despesa / Estorno
           </button>
           <button onclick="openModal('modalNovaTransferenciaFatura')">
             <i class="fas fa-exchange-alt" style="color: var(--accent);"></i>
@@ -770,9 +830,8 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Portador / Adicional</label>
-          <select name="adicional_id" class="form-control">
-            <option value="">Titular</option>
+          <label class="form-label">Cartão</label>
+          <select name="adicional_id" class="form-control" required>
             {% for add in fatura.cartao.adicionais %}
               <option value="{{ add.adicional_id }}">{{ add.adicional_nome }} (···{{ add.cartao_final }})</option>
             {% endfor %}
@@ -842,8 +901,16 @@
         </div>
       </div>
 
+      <!-- Vincular à Fatura -->
+      <div class="form-group" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 20px;">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="vincular_fatura" value="on" checked>
+          <span style="font-size: 13px;">Vincular a esta fatura ({{mes_venc_pt}})</span>
+        </label>
+      </div>
+
       <div class="flex justify-end mt-6">
-        <button type="submit" class="btn btn-primary">Aplicar alterações</button>
+        <button type="submit" class="btn btn-primary">Adicionar Lançamento</button>
       </div>
     </form>
   </div>
@@ -1073,13 +1140,216 @@
   </div>
 </div>
 
+<!-- MODAL: NOVA TRANSFERÊNCIA NA FATURA -->
+<div class="modal-backdrop" id="modalNovaTransferenciaFatura">
+  <div class="modal" style="max-width: 550px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Nova Transferência</h2>
+      <button class="modal-close" onclick="closeModal('modalNovaTransferenciaFatura')">&times;</button>
+    </div>
+    <form action="/lancamentos/transferir" method="post">
+      <input type="hidden" name="tipo" value="4">
+      
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" class="form-control" placeholder="Ex: Transferência para Conta B" required>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="transf_valor" class="form-control" onkeyup="formatCurrency(this)" placeholder="0,00" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" class="form-control" value="{{ date_today() }}" required>
+        </div>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Cartão</label>
+          <select name="adicional_id" class="form-control" required>
+            {% for add in fatura.cartao.adicionais %}
+              <option value="{{ add.adicional_id }}">{{ add.adicional_nome }} (···{{ add.cartao_final }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fatura Vinculada</label>
+          <select name="fatura" class="form-control" required>
+            {% for f in faturas_todas %}
+              <option value="{{ f.fatura_id }}" {{ 'selected' if f.fatura_id == fatura.fatura_id }}>
+                {{ f.data_vencimento.year }}-{{ "%02d"|format(f.data_vencimento.month) if f.data_vencimento else "00" }} ({{ 'Aberta' if not f.fechado else 'Fechada' }})
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Conta de origem fixada ao cartão atual -->
+      <input type="hidden" name="conta" value="{{ fatura.conta_id }}">
+
+      <div class="form-group">
+        <label class="form-label">Conta Destino</label>
+        <select name="conta_destino" class="form-control" required>
+          <option value="">Selecione a conta...</option>
+          {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="repetition-selector">
+        <div class="repetition-header">
+          <i class="fas fa-redo"></i>
+          <span>Definir repetição</span>
+        </div>
+        
+        <div class="radio-group-modern">
+          <label class="radio-modern">
+            <input type="radio" name="modo_repeticao_modern_transf" value="unica" checked onchange="updateRepetitionUI('transf')">
+            <span>Única</span>
+          </label>
+          <label class="radio-modern">
+            <input type="radio" name="modo_repeticao_modern_transf" value="parcelada" onchange="updateRepetitionUI('transf')">
+            <span>Parcelada</span>
+          </label>
+          <label class="radio-modern">
+            <input type="radio" name="modo_repeticao_modern_transf" value="fixa" onchange="updateRepetitionUI('transf')">
+            <span>Fixa</span>
+          </label>
+        </div>
+
+        <div id="repetition_fields_transf" style="display: none;">
+          <div class="form-grid-modern mb-4">
+            <div class="form-group">
+              <label class="form-label-modern">Repetição</label>
+              <select name="frequencia" class="form-control form-control-sm">
+                <option value="mensal">mensal</option>
+                <option value="semanal">semanal</option>
+                <option value="anual">anual</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label-modern">Repete-se a cada n meses *</label>
+              <input type="number" name="intervalo" class="form-control form-control-sm" value="1" min="1">
+            </div>
+          </div>
+
+          <div id="parcela_fields_transf" class="form-grid-modern mb-4">
+            <div class="form-group">
+              <label class="form-label-modern">Número de parcelas *</label>
+              <input type="number" name="num_parcelas" id="transf_num_parcelas" class="form-control form-control-sm" value="2" min="2" onchange="calcInstallmentValue('transf')">
+            </div>
+            <div class="form-group">
+              <label class="form-label-modern">Parcela inicial *</label>
+              <input type="number" name="parcela_inicial" class="form-control form-control-sm" value="1" min="1">
+            </div>
+          </div>
+
+          <div class="flex justify-between items-end">
+            <div class="form-group mb-0">
+              <label class="form-label-modern">Valor total (R$) *</label>
+              <input type="text" name="valor_referencia" id="transf_valor_referencia" class="form-control form-control-sm" onkeyup="formatCurrency(this); calcInstallmentValue('transf')" placeholder="0,00">
+            </div>
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" name="is_valor_parcela" id="transf_is_valor_parcela" onchange="calcInstallmentValue('transf')">
+              <span style="font-size: 12px; color: rgba(255,255,255,0.7);">Valor da parcela</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      &nbsp;
+      <div class="flex justify-end mt-6">
+        <button type="submit" class="btn btn-primary">Adicionar Transferência</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 function openModal(id) {
   document.getElementById(id).style.display = 'flex';
+  // Fecha o dropdown ao abrir um modal
+  const dropdown = document.getElementById('dropdownNovo');
+  if (dropdown) dropdown.classList.remove('show');
 }
 function closeModal(id) {
   document.getElementById(id).style.display = 'none';
 }
+
+function toggleDropdownNovo(e) {
+  e.stopPropagation();
+  const dropdown = document.getElementById('dropdownNovo');
+  dropdown.classList.toggle('show');
+}
+
+function filterCategoriasNovo(tipo) {
+  const select = document.getElementById('novo_categoria');
+  const options = select.querySelectorAll('option');
+  options.forEach(opt => {
+    if (!opt.value || opt.value === "-1") return;
+    const classe = opt.dataset.classe;
+    if (classe == tipo || classe == "0" || !classe) {
+      opt.style.display = '';
+    } else {
+      opt.style.display = 'none';
+    }
+  });
+  // Reset se a categoria atual sumiu
+  const currentVal = select.value;
+  if (currentVal && currentVal !== "-1") {
+    const activeOpt = select.querySelector(`option[value="${currentVal}"]`);
+    if (activeOpt && activeOpt.style.display === 'none') {
+      select.value = '-1';
+    }
+  }
+}
+
+function updateRepetitionUI(prefix) {
+  const modal = prefix === 'novo' ? 'modalNovoLancamentoFatura' : 'modalNovaTransferenciaFatura';
+  const modoRadio = document.querySelector(`#${modal} input[name^="modo_repeticao_modern"]:checked`);
+  if (!modoRadio) return;
+  const modo = modoRadio.value;
+  
+  const fieldsDiv = document.getElementById(`repetition_fields_${prefix}`);
+  const parcelaFields = document.getElementById(`parcela_fields_${prefix}`);
+  
+  if (modo === 'unica') {
+    fieldsDiv.style.display = 'none';
+  } else {
+    fieldsDiv.style.display = 'block';
+    parcelaFields.style.display = (modo === 'parcelada') ? 'grid' : 'none';
+  }
+}
+
+function calcInstallmentValue(prefix) {
+  const valRefEl = document.getElementById(`${prefix}_valor_referencia`);
+  const isParcEl = document.getElementById(`${prefix}_is_valor_parcela`);
+  const numParcEl = document.getElementById(`${prefix}_num_parcelas`);
+  const finalValEl = document.getElementById(`${prefix}_valor`);
+  
+  if (!valRefEl || !finalValEl) return;
+  
+  let valRaw = valRefEl.value.replace(/\D/g,'');
+  if (!valRaw) return;
+  let val = parseFloat(valRaw) / 100;
+  
+  let finalVal = val;
+  if (!isParcEl.checked) {
+    // É valor total, divide pelo numero de parcelas
+    const num = parseInt(numParcEl.value) || 1;
+    finalVal = val / num;
+  }
+  
+  // Formata o valor final para o campo principal
+  let v = finalVal.toFixed(2).replace(".",",");
+  v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+  v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
+  finalValEl.value = v;
+}
+
 function formatCurrency(i) {
   let v = i.value.replace(/\D/g,'');
   v = (v/100).toFixed(2).replace(".",",");
@@ -1099,7 +1369,7 @@ function toggleModoRepeticaoFatura() {
   document.getElementById('divRecorrenteFatura').style.display = (modo === 'recorrente') ? "" : "none";
 }
 
-// Fecha modal ou kebab ao clicar fora
+// Fecha modal ou kebab ou dropdown ao clicar fora
 window.onclick = function(event) {
   if (event.target.classList.contains('modal-backdrop')) {
     const modalId = event.target.id;
@@ -1108,6 +1378,11 @@ window.onclick = function(event) {
   
   if (!event.target.closest('.dropdown-kebab')) {
     document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+  }
+
+  if (!event.target.closest('.dropdown-novo')) {
+    const dropdown = document.getElementById('dropdownNovo');
+    if (dropdown) dropdown.classList.remove('show');
   }
 }
 
@@ -1151,77 +1426,87 @@ async function openEditOpModal(btn) {
     const resp = await fetch(`/lancamentos/editar/${opId}`);
     const data = await resp.json();
 
-    const form = document.getElementById('formEditarOpRD');
-    if (!form) return;
+    fillEditForm(data, `/lancamentos/editar/${opId}`);
     
-    // 1. Campos Básicos (Safe set)
-    const setVal = (id, val) => {
-      const el = document.getElementById(id);
-      if (el) el.value = val || '';
-    };
-
-    setVal('edit_desc', data.descricao);
-    setVal('edit_data', data.data);
-    setVal('edit_conta', data.conta);
-    setVal('edit_adicional', data.adicional_id);
-
-    const valEl = document.getElementById('edit_valor');
-    if (valEl) {
-      valEl.value = data.valor ? parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '0,00';
-    }
-
-    // 2. Definir Tipo primeiro para disparar o filtro corretamente
-    const isTransf = data.tipo == 4 || data.transf_rel;
-    const radioReceita = document.getElementById('edit_tipo_receita');
-    const radioTransf = document.getElementById('edit_tipo_transf');
-    const radioDespesa = document.getElementById('edit_tipo_despesa');
-
-    if (data.tipo == 1 && radioReceita) radioReceita.checked = true;
-    else if (isTransf && radioTransf) radioTransf.checked = true;
-    else if (radioDespesa) radioDespesa.checked = true;
-
-    // 3. Configurar Action
-    form.action = isTransf ? `/lancamentos/editar-transferencia/${opId}` : `/lancamentos/editar/${opId}`;
-
-    // 4. Disparar Filtro de Campos
-    if (typeof filterCategoriasByTipo === 'function') filterCategoriasByTipo(); 
+    // Ajuste específico para edição (ID já está na URL da action)
+    document.getElementById('edit_escopo_section_rd').style.display = (data.parcela || data.recorrencia) ? 'block' : 'none';
     
-    // 5. Preencher campos específicos após o filtro
-    if (isTransf) {
-      setVal('edit_conta_destino', data.conta_destino);
-    } else {
-      setVal('edit_cat', data.categoria);
-    }
-
-    // Escopo: mostrar se parcelado ou recorrente
-    const escopoSection = document.getElementById('edit_escopo_section_rd');
-    const parcelasContainer = document.getElementById('edit_parcelas_container');
-    const inputParcelaTotal = document.getElementById('edit_parcela_total');
-
-    if (escopoSection) {
-      if (data.parcela || data.recorrencia) {
-        escopoSection.style.display = '';
-        if (parcelasContainer && data.parcela && String(data.parcela).includes('.')) {
-          parcelasContainer.style.display = 'block';
-          if (inputParcelaTotal) inputParcelaTotal.value = parseInt(data.parcela.split('.')[1]);
-        } else if (parcelasContainer) {
-          parcelasContainer.style.display = 'none';
-        }
-      } else {
-        escopoSection.style.display = 'none';
-        if (parcelasContainer) parcelasContainer.style.display = 'none';
-      }
-    }
-    
-    form.style.display = 'block';
+    document.getElementById('formEditarOpRD').style.display = 'block';
   } catch (e) {
     console.error('Erro ao carregar lançamento:', e);
-    // Tenta mostrar o formulário mesmo com erro para evitar tela branca
     const form = document.getElementById('formEditarOpRD');
     if (form) form.style.display = 'block';
   } finally {
     const loader = document.getElementById('editModalLoading');
     if (loader) loader.style.display = 'none';
+  }
+}
+
+function fillEditForm(data, actionUrl) {
+  const form = document.getElementById('formEditarOpRD');
+  if (!form) return;
+
+  form.action = actionUrl;
+
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val || '';
+  };
+
+  setVal('edit_desc', data.descricao);
+  setVal('edit_data', data.data);
+  setVal('edit_conta', data.conta);
+  setVal('edit_adicional', data.adicional_id);
+
+  const valEl = document.getElementById('edit_valor');
+  if (valEl) {
+    valEl.value = data.valor ? parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '0,00';
+  }
+
+  const isTransf = data.tipo == 4 || data.transf_rel;
+  const radioReceita = document.getElementById('edit_tipo_receita');
+  const radioTransf = document.getElementById('edit_tipo_transf');
+  const radioDespesa = document.getElementById('edit_tipo_despesa');
+
+  // Reset groups
+  const catGroup = document.getElementById('edit_cat_group');
+  const destGroup = document.getElementById('edit_conta_destino_group');
+  const tipoGroup = document.getElementById('edit_tipo_group');
+
+  if (isTransf) {
+    if (radioTransf) radioTransf.checked = true;
+    if (catGroup) catGroup.style.display = 'none';
+    if (destGroup) destGroup.style.display = 'block';
+    if (tipoGroup) tipoGroup.style.display = 'none';
+    
+    // Se estiver editando, troca a URL para o endpoint de transferência
+    if (actionUrl.includes('/editar/')) {
+      const opId = actionUrl.split('/').pop();
+      form.action = `/lancamentos/editar-transferencia/${opId}`;
+    }
+    
+    setVal('edit_conta_destino', data.conta_destino);
+  } else {
+    if (data.tipo == 1 && radioReceita) radioReceita.checked = true;
+    else if (radioDespesa) radioDespesa.checked = true;
+    
+    if (catGroup) catGroup.style.display = 'block';
+    if (destGroup) destGroup.style.display = 'none';
+    if (tipoGroup) tipoGroup.style.display = 'block';
+    
+    setVal('edit_cat', data.categoria);
+    filterCategoriasByTipo(); // Agora filtra apenas R/D
+  }
+
+  // Parcelamento/Escopo
+  const parcelasContainer = document.getElementById('edit_parcelas_container');
+  const inputParcelaTotal = document.getElementById('edit_parcela_total');
+  
+  if (data.parcela && String(data.parcela).includes('.')) {
+    if (parcelasContainer) parcelasContainer.style.display = 'block';
+    if (inputParcelaTotal) inputParcelaTotal.value = parseInt(data.parcela.split('.')[1]);
+  } else if (parcelasContainer) {
+    parcelasContainer.style.display = 'none';
   }
 }
 
@@ -1240,27 +1525,12 @@ async function openDuplicateModal(btn) {
     const resp = await fetch(`/lancamentos/editar/${opId}`);
     const data = await resp.json();
     
-    form.action = '/lancamentos/inserir';
+    // Modifica para duplicação
+    data.descricao = (data.descricao || '') + ' (Cópia)';
     
-    document.getElementById('edit_desc').value = (data.descricao || '') + ' (Cópia)';
-    document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-    document.getElementById('edit_data').value = data.data || '';
-    document.getElementById('edit_conta').value = data.conta || '';
-    document.getElementById('edit_adicional').value = data.adicional_id || '';
+    fillEditForm(data, '/lancamentos/inserir');
     
-    const isTransf = data.tipo == 4 || data.transf_rel;
-    if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
-    else if (isTransf) document.getElementById('edit_tipo_transf').checked = true;
-    else document.getElementById('edit_tipo_despesa').checked = true;
-
-    filterCategoriasByTipo(); // Filtrar ao duplicar
-    
-    if (isTransf) {
-      document.getElementById('edit_conta_destino').value = data.conta_destino || '';
-    } else {
-      document.getElementById('edit_cat').value = data.categoria || '';
-    }
-
+    // Esconde seção de escopo em duplicação
     document.getElementById('edit_escopo_section_rd').style.display = 'none';
     form.style.display = 'block';
   } catch (e) {
@@ -1271,7 +1541,9 @@ async function openDuplicateModal(btn) {
 }
 
 function filterCategoriasByTipo() {
-  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  const modal = document.getElementById('modalEditarLancamento');
+  const checkedTipo = modal.querySelector('input[name="tipo"]:checked');
+  const tipo = checkedTipo ? checkedTipo.value : "3";
   const select = document.getElementById('edit_cat');
   const options = select.querySelectorAll('option');
   
@@ -1283,13 +1555,7 @@ function filterCategoriasByTipo() {
   const tipoGroup = document.getElementById('edit_tipo_group');
 
   if (tipo === "4") {
-    catGroup.style.display = 'none';
-    destGroup.style.display = 'block';
-    tipoGroup.style.display = 'none'; // Esconde o seletor de tipo se for transferência
-    if (isEditing) {
-      const opId = form.action.split('/').pop();
-      form.action = `/lancamentos/editar-transferencia/${opId}`;
-    }
+    tipoGroup.style.display = 'none'; 
   } else {
     catGroup.style.display = 'block';
     destGroup.style.display = 'none';
@@ -1359,31 +1625,6 @@ function setConciliadoFilter(val, btn) {
   filterTable();
 }
 
-function openDuplicateModal(btn) {
-  const d = btn.dataset;
-  const modal = document.getElementById('modalEditarLancamento');
-  document.getElementById('editModalTitle').innerText = 'Duplicar Lançamento';
-  document.getElementById('editModalLoading').style.display = 'none';
-
-  const form = document.getElementById('formEditarOpRD');
-  form.action = '/lancamentos/inserir';
-  document.getElementById('edit_escopo_section_rd').style.display = 'none';
-
-  document.getElementById('edit_desc').value = d.desc + ' (Cópia)';
-  // O d.valor vem negativo do banco para despesas, vamos limpar para o form formatado
-  const v = Math.abs(parseFloat(d.valor));
-  document.getElementById('edit_valor').value = v.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-  document.getElementById('edit_data').value = d.data;
-  document.getElementById('edit_cat').value = d.cat || '';
-  document.getElementById('edit_conta').value = d.conta || '';
-
-  if (d.tipo == '1') document.getElementById('edit_tipo_receita').checked = true;
-  else document.getElementById('edit_tipo_despesa').checked = true;
-
-  form.style.display = '';
-  form.style.display = '';
-  openModal('modalEditarLancamento');
-}
 
 function toggleSelectAll(cb) {
   const checkboxes = document.querySelectorAll('.row-checkbox');
