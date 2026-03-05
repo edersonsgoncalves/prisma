@@ -318,8 +318,8 @@ async def inserir_lancamento(
     valor_total_ou_parcela: Optional[str] = Form(default="total"), #
     frequencia: Optional[str] = Form(default="mensal"), #
     ocorrencias: Optional[int] = Form(default=12), #
-    adicional_id: Optional[int] = Form(default=None),
-    conta_destino: Optional[int] = Form(default=None),
+    adicional_id: Optional[str] = Form(default=None),
+    conta_destino: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -346,6 +346,10 @@ async def inserir_lancamento(
     parcela_str = None
     if parcela_atual and parcela_total:
         parcela_str = f"{parcela_atual:03d}.{parcela_total:03d}"
+
+    # Conversão de destinos e adicionais (podem vir como strings vazias)
+    conta_destino_id = int(conta_destino) if conta_destino and conta_destino.strip() and conta_destino != "-1" else None
+    add_id = int(adicional_id) if adicional_id and adicional_id.strip() and adicional_id != "-1" else None
 
     dt_operacao = date.fromisoformat(data)
     
@@ -419,16 +423,16 @@ async def inserir_lancamento(
             operacoes_data_efetivado=curr_dt_efetivado,
             operacoes_validacao=1,
             operacoes_grupo_id=grupo_id,
-            operacoes_adicional_id=adicional_id
+            operacoes_adicional_id=add_id
         )
         db.add(op)
         
         # Lógica de Transferência: Criar a contraparte se for tipo 4
-        if tipo == 4 and conta_destino:
+        if tipo == 4 and conta_destino_id:
             op_destino = Operacao(
                 operacoes_data_lancamento=curr_dt,
                 operacoes_descricao=descricao,
-                operacoes_conta=conta_destino,
+                operacoes_conta=conta_destino_id,
                 operacoes_valor=abs(curr_valor), # Entrada sempre positiva
                 operacoes_tipo=tipo,
                 operacoes_categoria=None,
