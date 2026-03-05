@@ -579,6 +579,7 @@ async def editar(
     efetivado: int = Form(default=0),
     data_efetivado: Optional[str] = Form(default=None),
     adicional_id: Optional[int] = Form(default=None),
+    nova_parcela_total: Optional[int] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
@@ -621,6 +622,16 @@ async def editar(
 
     old_date = op.operacoes_data_lancamento
     grupo_id = op.operacoes_grupo_id
+    
+    # Captura total de parcelas antigo para lógica de adição/remoção
+    old_parcela_total = None
+    if op.operacoes_parcela:
+        p_sep = "/" if "/" in str(op.operacoes_parcela) else "."
+        p_partes = str(op.operacoes_parcela).split(p_sep)
+        if len(p_partes) == 2:
+            try:
+                old_parcela_total = int(p_partes[1])
+            except: pass
 
     _aplicar_edicao(op)
     op.operacoes_efetivado = efetivado
@@ -630,6 +641,12 @@ async def editar(
         op.operacoes_data_efetivado = datetime.now()
     elif not efetivado:
         op.operacoes_data_efetivado = None
+
+    # Atualiza parcela se solicitado
+    if nova_parcela_total and op.operacoes_parcela:
+        p_sep = "/" if "/" in str(op.operacoes_parcela) else "."
+        atual = int(str(op.operacoes_parcela).split(p_sep)[0])
+        op.operacoes_parcela = f"{atual:03d}{p_sep}{nova_parcela_total:03d}"
 
     # Edição em cascata robusta
     if escopo == "subsequentes":
@@ -662,6 +679,12 @@ async def editar(
             o.operacoes_conta = conta
             o.operacoes_tipo = tipo
             
+            # Atualiza total de parcelas se necessário
+            if nova_parcela_total and o.operacoes_parcela:
+                p_sep = "/" if "/" in str(o.operacoes_parcela) else "."
+                o_atual = int(str(o.operacoes_parcela).split(p_sep)[0])
+                o.operacoes_parcela = f"{o_atual:03d}{p_sep}{nova_parcela_total:03d}"
+
             # Ajuste de data inteligente
             if new_date != old_date:
                 diff = relativedelta(o.operacoes_data_lancamento, old_date)
@@ -675,6 +698,76 @@ async def editar(
             
             log_evento(db, "UPDATE", "OPERACAO", o.operacoes_id,
                        f"Editado em cascata: '{descricao}'", sessao.get("id"))
+
+        # --- LÓGICA DE ADICIONAR OU REMOVER PARCELAS FISICAMENTE ---
+        if nova_parcela_total and old_parcela_total and nova_parcela_total != old_parcela_total:
+            p_sep = "/" if "/" in str(op.operacoes_parcela) else "."
+            
+            if nova_parcela_total < old_parcela_total:
+                # 1. Remover excedentes (se o total diminuiu)
+                query_del = db.query(Operacao).filter(Operacao.operacoes_validacao == 1)
+                if grupo_id:
+                    query_del = query_del.filter(Operacao.operacoes_grupo_id == grupo_id)
+                else:
+                    query_del = query_del.filter(Operacao.operacoes_descricao == op.operacoes_descricao, Operacao.operacoes_conta == op.operacoes_conta)
+                
+                rows = query_del.all()
+                for r in rows:
+                    try:
+                        r_idx = int(str(r.operacoes_parcela).split(p_sep)[0])
+                        # Deleta se o index for maior que o novo total e se não for o objeto que estamos editando
+                        if r_idx > nova_parcela_total and r.operacoes_id != op.operacoes_id:
+                            log_evento(db, "DELETE", "OPERACAO", r.operacoes_id, f"Removido por redução de parcelas ({old_parcela_total} -> {nova_parcela_total})", sessao.get("id"))
+                            f_id = r.operacoes_fatura
+                            db.delete(r)
+                            db.flush()
+                            if f_id: recalcular_total_fatura(db, f_id)
+                    except: continue
+
+            elif nova_parcela_total > old_parcela_total:
+                # 2. Adicionar novas (se o total aumentou)
+                query_series = db.query(Operacao).filter(Operacao.operacoes_validacao == 1)
+                if grupo_id:
+                    query_series = query_series.filter(Operacao.operacoes_grupo_id == grupo_id)
+                else:
+                    query_series = query_series.filter(Operacao.operacoes_descricao == op.operacoes_descricao, Operacao.operacoes_conta == op.operacoes_conta)
+                
+                all_members = query_series.all()
+                if not grupo_id:
+                    all_members = [m for m in all_members if p_sep in str(m.operacoes_parcela) and str(m.operacoes_parcela).endswith(f"{p_sep}{old_parcela_total:03d}")]
+                
+                if all_members:
+                    all_members.sort(key=lambda x: int(str(x.operacoes_parcela).split(p_sep)[0]))
+                    last_member = all_members[-1]
+                    last_idx = int(str(last_member.operacoes_parcela).split(p_sep)[0])
+                    last_dt = last_member.operacoes_data_lancamento
+                    
+                    for i in range(last_idx + 1, nova_parcela_total + 1):
+                        proxima_data = last_dt + relativedelta(months=(i - last_idx))
+                        
+                        nova_op = Operacao(
+                            operacoes_descricao=descricao,
+                            operacoes_conta=conta,
+                            operacoes_valor=valor_final,
+                            operacoes_tipo=tipo,
+                            operacoes_data_lancamento=proxima_data,
+                            operacoes_categoria=cat_id,
+                            operacoes_parcela=f"{i:03d}{p_sep}{nova_parcela_total:03d}",
+                            operacoes_validacao=1,
+                            operacoes_efetivado=0,
+                            operacoes_grupo_id=grupo_id,
+                            operacoes_adicional_id=adicional_id
+                        )
+                        
+                        conta_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
+                        if conta_obj and conta_obj.tipo_conta == 4:
+                            nova_op.operacoes_fatura = get_or_create_fatura(db, conta, proxima_data)
+                        
+                        db.add(nova_op)
+                        db.flush()
+                        log_evento(db, "INSERT", "OPERACAO", nova_op.operacoes_id, f"Adicionado por expansão de parcelas ({old_parcela_total} -> {nova_parcela_total})", sessao.get("id"))
+                        if nova_op.operacoes_fatura:
+                            recalcular_total_fatura(db, nova_op.operacoes_fatura)
 
     db.commit()
 

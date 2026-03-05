@@ -209,9 +209,9 @@
               {% if op.operacoes_transf_rel %}
                 <span class="text-muted" style="font-size: 11px;">
                   {% if op.operacoes_valor > 0 %}
-                    Origem: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                    De: {{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}
                   {% else %}
-                    Destino: {{ contas_transf.get(op.operacoes_transf_rel, 'Desconhecida') }}
+                    Para: {{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}
                   {% endif %}
                 </span>
               {% endif %}

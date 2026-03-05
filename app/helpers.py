@@ -59,7 +59,7 @@ def mes_por_extenso(mes: int, ano: int) -> str:
     return f"{NOMES_MESES[mes]} / {ano}"
 
 
-def formata_parcela(parcela: Optional[str | Decimal]) -> str:
+def formata_parcela(parcela: Optional[str | Decimal], por_extenso: Optional[bool] = False) -> str:
     """Transforma '002.012' em '2/12'"""
     if not parcela:
         return ""
@@ -69,7 +69,10 @@ def formata_parcela(parcela: Optional[str | Decimal]) -> str:
     partes = p_str.split(".")
     if len(partes) == 2:
         try:
-            return f"{int(partes[0])}/{int(partes[1])}"
+            if por_extenso:
+                return f"Parcela {int(partes[0])} de {int(partes[1])}"
+            else:
+                return f"{int(partes[0])}/{int(partes[1])}"
         except ValueError:
             return p_str
     return p_str

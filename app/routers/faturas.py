@@ -142,7 +142,7 @@ async def detalhe_fatura(
 
     operacoes = (
         db.query(Operacao)
-        .options(joinedload(Operacao.adicional), joinedload(Operacao.transf_rel_obj))
+        .options(joinedload(Operacao.adicional), joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta))
         .filter(Operacao.operacoes_fatura == fatura_id, Operacao.operacoes_validacao == 1)
         .order_by(Operacao.operacoes_data_lancamento)
         .all()

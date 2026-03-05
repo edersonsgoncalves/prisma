@@ -36,7 +36,10 @@ async def extrato_unificado(
     status_id = int(status) if status and status.strip() else None
 
     # Query base
-    query = db.query(Operacao).options(joinedload(Operacao.conta))
+    query = db.query(Operacao).options(
+        joinedload(Operacao.conta),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta)
+    )
     
     # Filtros de data e status "especial" para o mês atual
     hoje = date.today()
@@ -109,32 +112,6 @@ async def extrato_unificado(
     
     saldo_anterior = sa_query.scalar() or 0
 
-    # IDs das contas destino de transferências
-    ids_transf = [op.operacoes_transf_rel for op in operacoes if op.operacoes_transf_rel]
-    contas_transf = {}
-    if ids_transf:
-        ops_transf = (
-            db.query(Operacao.operacoes_id, ContaBancaria.nome_conta)
-            .join(ContaBancaria, Operacao.operacoes_id == ContaBancaria.conta_id) # Corrigido: era idcontas_bancarias
-            .filter(Operacao.operacoes_id.in_(ids_transf))
-            .all()
-        )
-        # Nota: Ajustei o JOIN acima para usar conta_id se necessário, 
-        # mas na verdade o operacoes_transf_rel aponta para o ID da OPERAÇÃO relacionada, 
-        # e de lá pegamos a conta. A query original parecia buscar o nome da conta 
-        # da operação relacionada. Vamos manter a lógica original corrigida para os nomes novos.
-        
-        # A query original era: .join(ContaBancaria, Operacao.operacoes_conta == ContaBancaria.idcontas_bancarias)
-        # O que não faz sentido se estamos filtrando por Operacao.operacoes_id.in_(ids_transf).
-        # Vamos refazer para pegar o nome da conta associada a cada operação de transferência relacionada.
-        ops_transf = (
-            db.query(Operacao.operacoes_id, ContaBancaria.nome_conta)
-            .join(ContaBancaria, Operacao.operacoes_conta == ContaBancaria.conta_id)
-            .filter(Operacao.operacoes_id.in_(ids_transf))
-            .all()
-        )
-        contas_transf = {op_id: nome for op_id, nome in ops_transf}
-
     # Dados para os selects do filtro
     # Ordenar por: (Se tem pai, usa ID do pai, senão usa próprio ID) para agrupar filhos logo após o pai.
     categorias = db.query(Categoria).order_by(
@@ -150,7 +127,6 @@ async def extrato_unificado(
         "conta_id": c_id,
         "operacoes": operacoes,
         "saldo_anterior": saldo_anterior,
-        "contas_transf": contas_transf,
         "categorias": categorias,
         "contas_todas": contas_todas,
         "mes": m,
@@ -179,7 +155,10 @@ async def extrato_por_conta(
     is_hoje_periodo = (m == hoje.month and y == hoje.year)
 
     from sqlalchemy import and_, or_
-    query = db.query(Operacao).options(joinedload(Operacao.conta)).filter(
+    query = db.query(Operacao).options(
+        joinedload(Operacao.conta),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta)
+    ).filter(
         Operacao.operacoes_conta == conta_id,
         Operacao.operacoes_validacao == 1,
     )
@@ -220,18 +199,6 @@ async def extrato_por_conta(
         Operacao.operacoes_data_lancamento < date(y, m, 1),
     ).scalar() or 0
 
-    # Contas destino de transferências
-    ids_transf = [op.operacoes_transf_rel for op in operacoes if op.operacoes_transf_rel]
-    contas_transf = {}
-    if ids_transf:
-        ops_transf = (
-            db.query(Operacao.operacoes_id, ContaBancaria.nome_conta)
-            .join(ContaBancaria, Operacao.operacoes_conta == ContaBancaria.conta_id)
-            .filter(Operacao.operacoes_id.in_(ids_transf))
-            .all()
-        )
-        contas_transf = {op_id: nome for op_id, nome in ops_transf}
-
     categorias = db.query(Categoria).order_by(
         func.coalesce(Categoria.categorias_pai_id, Categoria.categorias_id),
         Categoria.categorias_pai_id.isnot(None),
@@ -245,7 +212,6 @@ async def extrato_por_conta(
         "conta": conta,
         "operacoes": operacoes,
         "saldo_anterior": saldo_anterior,
-        "contas_transf": contas_transf,
         "categorias": categorias,
         "contas_todas": contas_todas,
         "mes": m,
