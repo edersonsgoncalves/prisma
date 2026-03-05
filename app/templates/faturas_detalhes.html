@@ -270,7 +270,11 @@
     z-index: 1000;
     overflow: hidden;
   }
-  /* Força exibição apenas quando tiver a classe .show */
+  .dropdown-kebab .dropdown-content.show {
+    display: flex !important;
+    flex-direction: column;
+  }
+
   /* Barra de Ações em Massa */
   .bulk-actions-bar {
     position: fixed;
