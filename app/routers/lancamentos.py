@@ -318,6 +318,8 @@ async def inserir_lancamento(
     valor_total_ou_parcela: Optional[str] = Form(default="total"), #
     frequencia: Optional[str] = Form(default="mensal"), #
     ocorrencias: Optional[int] = Form(default=12), #
+    adicional_id: Optional[int] = Form(default=None),
+    conta_destino: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -416,9 +418,32 @@ async def inserir_lancamento(
             operacoes_efetivado=curr_efetivado,
             operacoes_data_efetivado=curr_dt_efetivado,
             operacoes_validacao=1,
-            operacoes_grupo_id=grupo_id
+            operacoes_grupo_id=grupo_id,
+            operacoes_adicional_id=adicional_id
         )
         db.add(op)
+        
+        # Lógica de Transferência: Criar a contraparte se for tipo 4
+        if tipo == 4 and conta_destino:
+            op_destino = Operacao(
+                operacoes_data_lancamento=curr_dt,
+                operacoes_descricao=descricao,
+                operacoes_conta=conta_destino,
+                operacoes_valor=abs(curr_valor), # Entrada sempre positiva
+                operacoes_tipo=tipo,
+                operacoes_categoria=None,
+                operacoes_fatura=None, # Transferência entra na conta, não na fatura (geralmente)
+                operacoes_parcela=curr_parcela,
+                operacoes_efetivado=curr_efetivado,
+                operacoes_data_efetivado=curr_dt_efetivado,
+                operacoes_validacao=1,
+                operacoes_grupo_id=grupo_id,
+                operacoes_transf_rel=op.operacoes_id # Primeiro ID provisório, corrigiremos abaixo
+            )
+            db.add(op_destino)
+            db.flush()
+            op.operacoes_transf_rel = op_destino.operacoes_id
+            op_destino.operacoes_transf_rel = op.operacoes_id
         
         if curr_fat_id:
             faturas_para_recalcular.add(curr_fat_id)
@@ -531,6 +556,7 @@ async def editar_get(
         "recorrencia": int(op.operacoes_recorrencia) if op.operacoes_recorrencia is not None else None,
         "efetivado": int(op.operacoes_efetivado) if op.operacoes_efetivado is not None else 0,
         "data_efetivado": op.operacoes_data_efetivado.strftime("%Y-%m-%d") if op.operacoes_data_efetivado else None,
+        "adicional_id": op.operacoes_adicional_id,
     }))
 
 
@@ -548,6 +574,7 @@ async def editar(
     escopo: str = Form(default="so_este"),
     efetivado: int = Form(default=0),
     data_efetivado: Optional[str] = Form(default=None),
+    adicional_id: Optional[int] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
@@ -557,10 +584,6 @@ async def editar(
         redirecionar = next_url or request.headers.get("referer") or "/dashboard"
         return RedirectResponse(url=redirecionar, status_code=303)
 
-    # Impedir transferência para a mesma conta
-    if conta == conta_destino:
-        redirecionar = next_url or request.headers.get("referer") or "/extrato"
-        return RedirectResponse(url=redirecionar, status_code=303)
         
     # Limpa formatação BRL
     valor_limpo = valor.replace(".", "").replace(",", ".")
@@ -581,6 +604,7 @@ async def editar(
         operacao.operacoes_tipo = tipo
         operacao.operacoes_data_lancamento = dt_operacao
         operacao.operacoes_categoria = cat_id
+        operacao.operacoes_adicional_id = adicional_id
 
     log_evento(db, "UPDATE", "OPERACAO", op_id, detalhes, sessao.get("id"))
     
@@ -659,10 +683,11 @@ async def editar_transferencia(
     request: Request,
     op_id: int,
     descricao: str = Form(...),
-    conta_origem: int = Form(...),
+    conta: int = Form(...),
     conta_destino: int = Form(...),
     valor: str = Form(...),
     data: str = Form(...),
+    adicional_id: Optional[int] = Form(default=None),
     escopo: str = Form(default="so_este"),
     next_url: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
@@ -695,13 +720,14 @@ async def editar_transferencia(
     old_date = op.operacoes_data_lancamento
     grupo_id = op.operacoes_grupo_id
 
-    detalhes = f"Transferência editada: '{descricao}' R$ {valor_float} de conta {conta_origem} -> {conta_destino}"
+    detalhes = f"Transferência editada: '{descricao}' R$ {valor_float} de conta {conta} -> {conta_destino}"
 
     if op_saida:
         op_saida.operacoes_descricao = descricao
-        op_saida.operacoes_conta = conta_origem
+        op_saida.operacoes_conta = conta
         op_saida.operacoes_valor = -abs(valor_float)
         op_saida.operacoes_data_lancamento = dt_operacao
+        op_saida.operacoes_adicional_id = adicional_id
         log_evento(db, "UPDATE", "OPERACAO", op_saida.operacoes_id, detalhes, sessao.get("id"))
 
     if op_entrada:
@@ -709,6 +735,8 @@ async def editar_transferencia(
         op_entrada.operacoes_conta = conta_destino
         op_entrada.operacoes_valor = abs(valor_float)
         op_entrada.operacoes_data_lancamento = dt_operacao
+        # A conta de entrada (destino) geralmente não tem o adicional_id vinculado se for conta corrente
+        # mas mantemos a coerência se for outra ponta de cartão (incomum)
         log_evento(db, "UPDATE", "OPERACAO", op_entrada.operacoes_id, detalhes, sessao.get("id"))
 
     # Sincronização em cascata para transferências
@@ -858,3 +886,90 @@ async def converter_para_transferencia(
     if op_espelho.operacoes_fatura: recalcular_total_fatura(db, op_espelho.operacoes_fatura)
 
     return JSONResponse(content={"sucesso": True, "id_original": op.operacoes_id, "id_espelho": op_espelho.operacoes_id})
+
+
+@router.post("/conciliar-massa")
+async def conciliar_massa(
+    ids: str = Form(...),
+    back_url: Optional[str] = Form(default="/extrato"),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    """Concilia múltiplos lançamentos de uma vez."""
+    op_ids = json.loads(ids)
+    faturas_recalc = set()
+    
+    for op_id in op_ids:
+        op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+        if op:
+            op.operacoes_efetivado = 1
+            op.operacoes_data_efetivado = datetime.now()
+            if op.operacoes_fatura: faturas_recalc.add(op.operacoes_fatura)
+            
+            # Se for transferência, concilia o outro lado
+            if op.operacoes_transf_rel:
+                op_rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+                if op_rel:
+                    op_rel.operacoes_efetivado = 1
+                    op_rel.operacoes_data_efetivado = datetime.now()
+                    if op_rel.operacoes_fatura: faturas_recalc.add(op_rel.operacoes_fatura)
+
+    db.commit()
+    for f_id in faturas_recalc: recalcular_total_fatura(db, f_id)
+    return RedirectResponse(url=back_url, status_code=303)
+
+
+@router.post("/deletar-massa")
+async def deletar_massa(
+    ids: str = Form(...),
+    back_url: Optional[str] = Form(default="/extrato"),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    """Exclui múltiplos lançamentos de uma vez."""
+    op_ids = json.loads(ids)
+    faturas_recalc = set()
+    
+    for op_id in op_ids:
+        op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+        if op:
+            if op.operacoes_fatura: faturas_recalc.add(op.operacoes_fatura)
+            
+            if op.operacoes_transf_rel:
+                op_rel = db.query(Operacao).filter(Operacao.operacoes_id == op.operacoes_transf_rel).first()
+                if op_rel:
+                    if op_rel.operacoes_fatura: faturas_recalc.add(op_rel.operacoes_fatura)
+                    db.delete(op_rel)
+            
+            db.delete(op)
+
+    db.commit()
+    for f_id in faturas_recalc: recalcular_total_fatura(db, f_id)
+    return RedirectResponse(url=back_url, status_code=303)
+
+
+@router.post("/editar-massa")
+async def editar_massa(
+    ids: str = Form(...),
+    categoria_id: Optional[int] = Form(default=None),
+    adicional_id: Optional[int] = Form(default=None),
+    back_url: Optional[str] = Form(default="/extrato"),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login),
+):
+    """Edita categoria ou portador de múltiplos lançamentos."""
+    op_ids = json.loads(ids)
+    
+    for op_id in op_ids:
+        op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
+        if op:
+            if categoria_id is not None:
+                # Só altera categoria se não for transferência (tipo 4)
+                if int(op.operacoes_tipo) != 4:
+                    op.operacoes_categoria = categoria_id if categoria_id != -1 else None
+            
+            if adicional_id is not None:
+                op.operacoes_adicional_id = adicional_id if adicional_id != -1 else None
+
+    db.commit()
+    return RedirectResponse(url=back_url, status_code=303)

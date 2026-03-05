@@ -74,6 +74,10 @@ class ContaBancaria(Base):
 
     operacoes: Mapped[List["Operacao"]] = relationship(back_populates="conta")
     faturas: Mapped[List["FaturaCartao"]] = relationship(back_populates="cartao")
+    adicionais: Mapped[List["CartaoAdicional"]] = relationship(
+        back_populates="conta_mestre",
+        foreign_keys="[CartaoAdicional.conta_id]"
+    )
 
 
 # ──────────────────────────────────────────────
@@ -94,6 +98,32 @@ class FaturaCartao(Base):
 
     cartao: Mapped[Optional[ContaBancaria]] = relationship(back_populates="faturas")
     operacoes: Mapped[List["Operacao"]] = relationship(back_populates="fatura")
+
+
+# ──────────────────────────────────────────────
+# CARTÕES ADICIONAIS (Portadores)
+# ──────────────────────────────────────────────
+class CartaoAdicional(Base):
+    __tablename__ = "cartoes_adicionais"
+
+    adicional_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    conta_id: Mapped[int] = mapped_column(Integer, ForeignKey("contas_bancarias.conta_id"))
+    adicional_nome: Mapped[str] = mapped_column(String(100))
+    cartao_final: Mapped[str] = mapped_column(String(10))
+    apelido: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    conta_vinculada: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("contas_bancarias.conta_id"), nullable=True
+    )
+    titular: Mapped[int] = mapped_column(SmallInteger, default=0)
+    ativo: Mapped[int] = mapped_column(SmallInteger, default=1)
+
+    # Relacionamentos
+    conta_mestre: Mapped["ContaBancaria"] = relationship(
+        "ContaBancaria", foreign_keys=[conta_id]
+    )
+    conta_destino: Mapped[Optional["ContaBancaria"]] = relationship(
+        "ContaBancaria", foreign_keys=[conta_vinculada]
+    )
 
 
 # ──────────────────────────────────────────────
@@ -160,6 +190,9 @@ class Operacao(Base):
         Integer, ForeignKey("projetos.projeto_id"), nullable=True
     )
     operacoes_grupo_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    operacoes_adicional_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("cartoes_adicionais.adicional_id"), nullable=True
+    )
 
     # Relacionamentos
     conta: Mapped[Optional[ContaBancaria]] = relationship(back_populates="operacoes")
@@ -167,10 +200,18 @@ class Operacao(Base):
     fatura: Mapped[Optional[FaturaCartao]] = relationship(back_populates="operacoes")
     recorrencia_obj: Mapped[Optional[Recorrencia]] = relationship(back_populates="operacoes")
     projeto: Mapped[Optional[Projeto]] = relationship(back_populates="operacoes")
+    adicional: Mapped[Optional[CartaoAdicional]] = relationship()
     categoria_obj: Mapped[Optional[Categoria]] = relationship(
         "Categoria",
         primaryjoin="Operacao.operacoes_categoria == Categoria.categorias_id",
         foreign_keys=[operacoes_categoria],
+    )
+    transf_rel_obj: Mapped[Optional["Operacao"]] = relationship(
+        "Operacao",
+        primaryjoin="Operacao.operacoes_transf_rel == Operacao.operacoes_id",
+        foreign_keys=[operacoes_transf_rel],
+        remote_side=[operacoes_id],
+        viewonly=True,
     )
 
 

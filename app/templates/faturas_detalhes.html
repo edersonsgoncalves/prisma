@@ -217,6 +217,100 @@
   .month-item.has-invoice {
     color: rgba(255,255,255,0.8);
   }
+
+  /* Agrupamento por Portador */
+  .portador-group-header {
+    background: rgba(99, 102, 241, 0.08) !important;
+    border-top: 2px solid rgba(99, 102, 241, 0.2) !important;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .portador-group-header:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+  }
+  .portador-group-header td {
+    padding: 10px 15px !important;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--primary-light);
+  }
+  .portador-chevron {
+    transition: transform 0.3s;
+    margin-right: 10px;
+    opacity: 0.5;
+  }
+  .portador-group-header.collapsed .portador-chevron {
+    transform: rotate(-90deg);
+  }
+
+  /* Kebab Fix */
+  .table-wrapper {
+    overflow: visible !important;
+  }
+  .dropdown-kebab {
+    position: relative;
+  }
+  /* Desabilita o hover automático do main.css */
+  .dropdown-kebab:hover .dropdown-content,
+  .dropdown-kebab:focus-within .dropdown-content {
+    display: none;
+  }
+  .dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    min-width: 180px;
+    background: #1e2229;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    z-index: 1000;
+    overflow: hidden;
+  }
+  /* Força exibição apenas quando tiver a classe .show */
+  /* Barra de Ações em Massa */
+  .bulk-actions-bar {
+    position: fixed;
+    bottom: 30px;
+    left: calc(50% + 160px); /* Ajuste para centralizar em relação ao main (considerando sidebar) */
+    transform: translateX(-50%) translateY(120%);
+    background: #111;
+    border: 1px solid var(--primary);
+    border-radius: 12px;
+    padding: 12px 25px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+    z-index: 1001;
+    transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  }
+  @media (max-width: 1024px) {
+    .bulk-actions-bar { left: 50%; }
+  }
+  .bulk-actions-bar.active {
+    transform: translateX(-50%) translateY(0);
+  }
+  .bulk-count {
+    color: var(--primary-light);
+    font-weight: 700;
+    font-size: 13px;
+    border-right: 1px solid rgba(255,255,255,0.1);
+    padding-right: 15px;
+    white-space: nowrap;
+  }
+  .bulk-actions-bar .form-control-sm {
+    background: #1e2229;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+  }
+  .bulk-actions-bar select option {
+    background: #1e2229;
+    color: #fff;
+  }
 </style>
 {% endblock %}
 
@@ -373,63 +467,100 @@
             </tr>
           </thead>
           <tbody>
-            {% for op in operacoes %}
-            <tr class="fatura-row" data-conciliado="{{ op.operacoes_efetivado }}">
-              <td>
-                <input type="checkbox" class="checkbox-custom row-checkbox" data-id="{{ op.operacoes_id }}" onclick="toggleRowSelection()">
-              </td>
-              <td class="text-muted" style="font-size: 13px;">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
-              <td>
-                <div class="flex items-center gap-2">
-                  <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }}; box-shadow: 0 0 5px {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }};" title="{{ 'Conciliado' if op.operacoes_efetivado else 'Pendente' }}"></div>
-                  <div class="flex flex-col">
-                    <span class="font-bold">{{ op.operacoes_descricao }}</span>
-                    {% if op.operacoes_parcela %}
-                      <span class="text-muted" style="font-size: 10px;">{{ formata_parcela(op.operacoes_parcela) }}</span>
-                    {% endif %}
+            {% for additional_id, ops in operacoes_agrupadas %}
+              {% set outer_loop_index = loop.index %}
+              {% set portador_obj = ops[0].adicional %}
+              <tr class="portador-group-header" onclick="togglePortadorGroup(this, 'group-{{ outer_loop_index }}')">
+                <td colspan="5">
+                  <div class="flex justify-between items-center w-full">
+                    <span>
+                      <i class="fas fa-chevron-down portador-chevron"></i>
+                      <i class="fas fa-credit-card mr-2 opacity-50"></i>
+                      {% if portador_obj %}
+                        {{ portador_obj.adicional_nome }} (···{{ portador_obj.cartao_final }})
+                      {% else %}
+                        Titular
+                      {% endif %}
+                    </span>
+                    <span class="font-mono text-xs opacity-70">
+                      {{ ops|length }} lançamentos · {{ formata_moeda(ops|sum(attribute='operacoes_valor')) }}
+                    </span>
                   </div>
-                </div>
-              </td>
-              <td class="text-right font-bold {{ 'text-danger' if op.operacoes_valor < 0 else 'text-success' }}" style="font-family: 'JetBrains Mono', monospace;">
-                {{ formata_moeda(op.operacoes_valor) }}
-              </td>
-              <td class="text-right">
-                <div class="dropdown-kebab">
-                  <button class="kebab-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-                    </svg>
-                  </button>
-                  <div class="dropdown-content">
-                    <button type="button" 
-                            data-id="{{ op.operacoes_id }}"
-                            data-desc="{{ op.operacoes_descricao }}"
-                            data-valor="{{ op.operacoes_valor }}"
-                            data-tipo="{{ op.operacoes_tipo }}"
-                            data-data="{{ op.operacoes_data_lancamento }}"
-                            data-cat="{{ op.operacoes_categoria or '' }}"
-                            data-conta="{{ op.operacoes_conta }}"
-                            onclick="openDuplicateModal(this)">
-                      Duplicar
-                    </button>
-                    <button type="button"
-                            data-id="{{ op.operacoes_id }}"
-                            data-tipo="{{ op.operacoes_tipo }}"
-                            data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
-                            data-parcela="{{ op.operacoes_parcela or '' }}"
-                            data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
-                            onclick="openEditOpModal(this)">
-                      Editar
-                    </button>
-                    <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:block;">
-                      <button type="submit" class="text-danger">Excluir</button>
-                    </form>
+                </td>
+              </tr>
+              {% for op in ops %}
+              <tr class="fatura-row group-{{ outer_loop_index }}" data-conciliado="{{ op.operacoes_efetivado }}">
+                <td>
+                  <input type="checkbox" class="checkbox-custom row-checkbox" data-id="{{ op.operacoes_id }}" data-tipo="{{ op.operacoes_tipo }}" onclick="toggleRowSelection()">
+                </td>
+                <td class="text-muted" style="font-size: 13px;">{{ mostra_data(op.operacoes_data_lancamento) }}</td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <div style="width: 8px; height: 8px; border-radius: 50%; background: {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }}; box-shadow: 0 0 5px {{ '#2ecc71' if op.operacoes_efetivado else '#f1c40f' }};" title="{{ 'Conciliado' if op.operacoes_efetivado else 'Pendente' }}"></div>
+                    <div class="flex flex-col">
+                      <span class="font-bold">{{ op.operacoes_descricao }}</span>
+                      {% if op.operacoes_parcela %}
+                        <span class="text-muted" style="font-size: 10px;">{{ formata_parcela(op.operacoes_parcela) }}</span>
+                      {% endif %}
+                      {% if op.operacoes_transf_rel %}
+                        <span class="text-accent" style="font-size: 9px; font-weight: 600;">TRANSF ↔ #{{ op.operacoes_transf_rel }}</span>
+                      {% endif %}
+                    </div>
                   </div>
-                </div>
-              </td>
-            </tr>
+                </td>
+                <td class="text-right font-bold {{ 'text-danger' if op.operacoes_valor < 0 else 'text-success' }}" style="font-family: 'JetBrains Mono', monospace;">
+                  {{ formata_moeda(op.operacoes_valor) }}
+                </td>
+                <td class="text-right">
+                  <div class="dropdown-kebab">
+                    <button class="kebab-btn" onclick="toggleKebab(event, this)">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                      </svg>
+                    </button>
+                    <div class="dropdown-content">
+                      <button type="button" 
+                              data-id="{{ op.operacoes_id }}"
+                              data-desc="{{ op.operacoes_descricao }}"
+                              data-valor="{{ op.operacoes_valor }}"
+                              data-tipo="{{ op.operacoes_tipo }}"
+                              data-data="{{ op.operacoes_data_lancamento }}"
+                              data-cat="{{ op.operacoes_categoria or '' }}"
+                              data-conta="{{ op.operacoes_conta }}"
+                              onclick="openDuplicateModal(this)">
+                        Duplicar
+                      </button>
+                       <button type="button"
+                               data-id="{{ op.operacoes_id }}"
+                               data-tipo="{{ op.operacoes_tipo }}"
+                               data-adicional="{{ op.operacoes_adicional_id or '' }}"
+                               data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                               data-parcela="{{ op.operacoes_parcela or '' }}"
+                               data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                               onclick="openEditOpModal(this)">
+                         Editar
+                       </button>
+                      
+                      <!-- Novas Ações -->
+                      <button type="button" onclick="abrirModalMoverFatura('{{ op.operacoes_id }}', '{{ op.operacoes_fatura }}')">
+                        Mover Fatura
+                      </button>
+                      {% if not op.operacoes_transf_rel %}
+                      <button type="button" onclick="abrirModalConverterTransf('{{ op.operacoes_id }}', '{{ op.operacoes_valor|abs }}')">
+                        Converter Transf
+                      </button>
+                      {% endif %}
+
+                      <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:block;">
+                        <button type="submit" class="text-danger">Excluir</button>
+                      </form>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
             {% else %}
-            <tr><td colspan="5" class="text-center p-10 text-muted">Nenhum lançamento encontrado nesta fatura.</td></tr>
+              <tr><td colspan="5" class="text-center p-10 text-muted">Nenhum lançamento encontrado nesta fatura.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -440,13 +571,36 @@
 
 <div id="bulkActionsBar" class="bulk-actions-bar">
   <span class="bulk-count"><span id="selectedCount">0</span> lançamentos</span>
-  <div class="flex gap-2">
+  <div class="flex gap-2 items-center">
     <button class="btn btn-primary btn-sm" onclick="bulkConciliar()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><polyline points="20 6 9 17 4 12"/></svg>
       Conciliar
     </button>
+    
+    <div id="bulkCatGroup" style="display:flex; gap:8px;">
+        <select id="bulkCategorySelect" class="form-control form-control-sm" style="width:150px; font-size:12px; height:32px;">
+            <option value="">Alterar Categoria...</option>
+            <option value="-1">Sem Categoria</option>
+            {% for cat in categorias %}
+              <option value="{{ cat.categorias_id }}">
+                {% if cat.categorias_pai_id %} &nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+              </option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="bulkEdit('categoria')">Aplicar</button>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+        <select id="bulkPortadorSelect" class="form-control form-control-sm" style="width:150px; font-size:12px; height:32px;">
+            <option value="">Alterar Adicional...</option>
+            <option value="-1">Titular</option>
+            {% for add in fatura.cartao.adicionais %}
+              <option value="{{ add.adicional_id }}">{{ add.apelido }} ({{add.cartao_final}})</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="bulkEdit('portador')">Aplicar</button>
+    </div>
+
     <button class="btn btn-outline btn-sm text-danger" onclick="bulkDelete()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 5px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
       Excluir
     </button>
   </div>
@@ -641,7 +795,33 @@
   </div>
 </div>
 
-<!-- Modal Editar Lançamento (Sincronizado com Extrato) -->
+<!-- MODAL: MOVER LANÇAMENTO DE FATURA -->
+<div class="modal-backdrop" id="modalMoverFatura">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Mover para outra Fatura</h2>
+      <button class="modal-close" onclick="closeModal('modalMoverFatura')">&times;</button>
+    </div>
+    <form action="/faturas/mover-lancamento" method="post">
+      <input type="hidden" name="operacao_id" id="mover_fatura_op_id">
+      <div class="form-group">
+        <label class="form-label">Selecione a nova fatura:</label>
+        <select name="nova_fatura_id" class="form-control" required>
+          {% for f in faturas_todas %}
+            <option value="{{ f.fatura_id }}">
+              {{ f.data_vencimento.year }}-{{ "%02d"|format(f.data_vencimento.month) if f.data_vencimento else "00" }} ({{ 'Aberta' if not f.fechado else 'Fechada' }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary btn-sm">Mover Lançamento</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL EDITAR LANÇAMENTO (Reutilizado do Extrato) -->
 <div class="modal-backdrop" id="modalEditarLancamento">
   <div class="modal">
     <div class="modal-header">
@@ -654,6 +834,7 @@
     </div>
 
     <form id="formEditarOpRD" action="" method="post" style="display:none">
+      <input type="hidden" name="conta" id="edit_conta">
       <div class="form-group">
         <label class="form-label">Descrição</label>
         <input type="text" name="descricao" id="edit_desc" class="form-control" required>
@@ -671,64 +852,60 @@
       </div>
 
       <div class="form-grid-2">
-        <div class="form-group">
+        <div class="form-group" id="edit_cat_group">
           <label class="form-label">Categoria</label>
           <select name="categoria" id="edit_cat" class="form-control">
             <option value="">Sem Categoria</option>
             {% for cat in categorias %}
-            <!-- <option value="{{ cat.categorias_id }}">{{ cat.categorias_nome }}</option> -->
-            <option value="{{ cat.categorias_id }}">
+            <option value="{{ cat.categorias_id }}" data-classe="{{ cat.categorias_classe }}">
               {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
             </option>
             {% endfor %}
-
-            
-          
+          </select>
+        </div>
+        <div class="form-group" id="edit_conta_destino_group" style="display:none">
+          <label class="form-label">Conta Destino</label>
+          <select name="conta_destino" id="edit_conta_destino" class="form-control">
+            <option value="">Selecione a conta...</option>
+            {% for c in contas_todas %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Conta</label>
-          <select name="conta" id="edit_conta" class="form-control" required>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
+          <label class="form-label">Portador / Adicional</label>
+          <select name="adicional_id" id="edit_adicional" class="form-control">
+            <option value="">Titular</option>
+            {% for add in fatura.cartao.adicionais %}
+              <option value="{{ add.adicional_id }}">{{ add.adicional_nome }} (···{{ add.cartao_final }})</option>
+            {% endfor %}
           </select>
         </div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" id="edit_tipo_group">
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" value="1" id="edit_tipo_receita"> Receita
+            <input type="radio" name="tipo" value="1" id="edit_tipo_receita" onchange="filterCategoriasByTipo()"> Receita
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" value="3" id="edit_tipo_despesa"> Despesa
+            <input type="radio" name="tipo" value="3" id="edit_tipo_despesa" onchange="filterCategoriasByTipo()" checked> Despesa
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer" style="display:none">
+            <input type="radio" name="tipo" value="4" id="edit_tipo_transf" onchange="filterCategoriasByTipo()"> Transferência
           </label>
         </div>
       </div>
 
-      <!-- Escopo de Edição (Somente se parcelado/recorrente) -->
       <div id="edit_escopo_section_rd" style="display:none; background: rgba(255,255,0,0.05); padding: 10px; border-radius: 4px; margin-bottom: 15px; border: 1px solid rgba(255,255,0,0.2);">
-        <label class="form-label" style="color: var(--warning);">Este lançamento faz parte de uma série. O que deseja editar?</label>
+        <label class="form-label" style="color: var(--warning);">Série de lançamentos detectada. Editar:</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo" value="so_este" checked> Apenas este lançamento
+            <input type="radio" name="escopo" value="so_este" checked> Apenas este
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo" value="subsequentes"> Este e os próximos (Cascata)
+            <input type="radio" name="escopo" value="subsequentes"> Este e próximos
           </label>
         </div>
       </div>
@@ -766,11 +943,42 @@ function toggleModoRepeticaoFatura() {
   document.getElementById('divRecorrenteFatura').style.display = (modo === 'recorrente') ? "" : "none";
 }
 
-// Fecha modal ao clicar fora
+// Fecha modal ou kebab ao clicar fora
 window.onclick = function(event) {
   if (event.target.classList.contains('modal-backdrop')) {
-    event.target.style.display = 'none';
+    const modalId = event.target.id;
+    closeModal(modalId);
   }
+  
+  if (!event.target.closest('.dropdown-kebab')) {
+    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+  }
+}
+
+function toggleKebab(e, btn) {
+  e.stopPropagation();
+  const content = btn.nextElementSibling;
+  const isShown = content.classList.contains('show');
+  
+  document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+  if (!isShown) content.classList.add('show');
+
+  // Fix para não sair da tela (inverter se estiver no final)
+  const rect = content.getBoundingClientRect();
+  if (rect.bottom > window.innerHeight) {
+    content.style.top = 'auto';
+    content.style.bottom = '100%';
+  } else {
+    content.style.top = '100%';
+    content.style.bottom = 'auto';
+  }
+}
+
+function togglePortadorGroup(header, groupClass) {
+  header.classList.toggle('collapsed');
+  document.querySelectorAll('.' + groupClass).forEach(row => {
+    row.style.display = header.classList.contains('collapsed') ? 'none' : 'table-row';
+  });
 }
 
 async function openEditOpModal(btn) {
@@ -788,14 +996,32 @@ async function openEditOpModal(btn) {
     const data = await resp.json();
 
     const form = document.getElementById('formEditarOpRD');
-    form.action = `/lancamentos/editar/${opId}`;
+    
+    // 1. Campos Básicos
     document.getElementById('edit_desc').value = data.descricao || '';
     document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
     document.getElementById('edit_data').value = data.data || '';
-    document.getElementById('edit_cat').value = data.categoria || '';
     document.getElementById('edit_conta').value = data.conta || '';
+    document.getElementById('edit_adicional').value = data.adicional_id || '';
+
+    // 2. Definir Tipo primeiro para disparar o filtro corretamente
+    const isTransf = data.tipo == 4 || data.transf_rel;
     if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
+    else if (isTransf) document.getElementById('edit_tipo_transf').checked = true;
     else document.getElementById('edit_tipo_despesa').checked = true;
+
+    // 3. Configurar Action (necessário para o filterCategoriasByTipo saber se é edit)
+    form.action = isTransf ? `/lancamentos/editar-transferencia/${opId}` : `/lancamentos/editar/${opId}`;
+
+    // 4. Disparar Filtro de Campos (Categoria vs Transferência)
+    filterCategoriasByTipo(); 
+    
+    // 5. Preencher campos específicos após o filtro
+    if (isTransf) {
+      document.getElementById('edit_conta_destino').value = data.conta_destino || '';
+    } else {
+      document.getElementById('edit_cat').value = data.categoria || '';
+    }
 
     // Escopo: mostrar se parcelado ou recorrente
     const escopoSection = document.getElementById('edit_escopo_section_rd');
@@ -804,12 +1030,118 @@ async function openEditOpModal(btn) {
     } else {
       escopoSection.style.display = 'none';
     }
-    form.style.display = '';
-  } catch(e) {
+    form.style.display = 'block';
+  } catch (e) {
     console.error('Erro ao carregar lançamento:', e);
   } finally {
     document.getElementById('editModalLoading').style.display = 'none';
   }
+}
+
+async function openDuplicateModal(btn) {
+  const opId = btn.dataset.id;
+  const form = document.getElementById('formEditarOpRD');
+  const modalId = 'modalEditarLancamento';
+  
+  document.getElementById('editModalTitle').innerText = 'Duplicar Lançamento';
+  document.getElementById('editModalLoading').style.display = 'flex';
+  form.style.display = 'none';
+  
+  openModal(modalId);
+  
+  try {
+    const resp = await fetch(`/lancamentos/editar/${opId}`);
+    const data = await resp.json();
+    
+    form.action = '/lancamentos/inserir';
+    
+    document.getElementById('edit_desc').value = (data.descricao || '') + ' (Cópia)';
+    document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    document.getElementById('edit_data').value = data.data || '';
+    document.getElementById('edit_conta').value = data.conta || '';
+    document.getElementById('edit_adicional').value = data.adicional_id || '';
+    
+    const isTransf = data.tipo == 4 || data.transf_rel;
+    if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
+    else if (isTransf) document.getElementById('edit_tipo_transf').checked = true;
+    else document.getElementById('edit_tipo_despesa').checked = true;
+
+    filterCategoriasByTipo(); // Filtrar ao duplicar
+    
+    if (isTransf) {
+      document.getElementById('edit_conta_destino').value = data.conta_destino || '';
+    } else {
+      document.getElementById('edit_cat').value = data.categoria || '';
+    }
+
+    document.getElementById('edit_escopo_section_rd').style.display = 'none';
+    form.style.display = 'block';
+  } catch (e) {
+    console.error('Erro ao duplicar lançamento:', e);
+  } finally {
+    document.getElementById('editModalLoading').style.display = 'none';
+  }
+}
+
+function filterCategoriasByTipo() {
+  const tipo = document.querySelector('input[name="tipo"]:checked').value;
+  const select = document.getElementById('edit_cat');
+  const options = select.querySelectorAll('option');
+  
+  const catGroup = document.getElementById('edit_cat_group');
+  const destGroup = document.getElementById('edit_conta_destino_group');
+  const form = document.getElementById('formEditarOpRD');
+  const isEditing = form.action.includes('/editar');
+
+  const tipoGroup = document.getElementById('edit_tipo_group');
+
+  if (tipo === "4") {
+    catGroup.style.display = 'none';
+    destGroup.style.display = 'block';
+    tipoGroup.style.display = 'none'; // Esconde o seletor de tipo se for transferência
+    if (isEditing) {
+      const opId = form.action.split('/').pop();
+      form.action = `/lancamentos/editar-transferencia/${opId}`;
+    }
+  } else {
+    catGroup.style.display = 'block';
+    destGroup.style.display = 'none';
+    tipoGroup.style.display = 'block'; 
+    if (isEditing) {
+      const opId = form.action.split('/').pop();
+      form.action = `/lancamentos/editar/${opId}`;
+    }
+    
+    options.forEach(opt => {
+      if (!opt.value) return; 
+      const classe = opt.dataset.classe;
+      if (classe === tipo) {
+        opt.style.display = '';
+      } else {
+        opt.style.display = 'none';
+      }
+    });
+
+    const currentVal = select.value;
+    if (currentVal) {
+      const activeOpt = select.querySelector(`option[value="${currentVal}"]`);
+      if (activeOpt && activeOpt.style.display === 'none') {
+        select.value = '';
+      }
+    }
+  }
+}
+
+function abrirModalMoverFatura(opId, faturaId) {
+  document.getElementById('mover_fatura_op_id').value = opId;
+  const sel = document.querySelector('#modalMoverFatura select');
+  if (sel) sel.value = faturaId;
+  openModal('modalMoverFatura');
+}
+
+function abrirModalConverterTransf(opId, valor) {
+  document.getElementById('conv_transf_op_id').value = opId;
+  openModal('modalConverterTransf');
 }
 
 let currentConciliadoFilter = 'all';
@@ -880,6 +1212,10 @@ function toggleRowSelection() {
   if (selected.length > 0) {
     bar.classList.add('active');
     count.innerText = selected.length;
+    
+    // Lógica para esconder Categoria se houver transferência (tipo 4)
+    const hasTransfer = Array.from(selected).some(c => c.dataset.tipo == "4");
+    document.getElementById('bulkCatGroup').style.display = hasTransfer ? 'none' : 'flex';
   } else {
     bar.classList.remove('active');
     document.getElementById('selectAllFatura').checked = false;
@@ -912,21 +1248,64 @@ async function bulkDelete() {
 
 async function bulkConciliar() {
   const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+  
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = '/lancamentos/conciliar-massa';
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = 'ids';
-  input.value = JSON.stringify(ids);
+  
+  const inputIds = document.createElement('input');
+  inputIds.type = 'hidden';
+  inputIds.name = 'ids';
+  inputIds.value = JSON.stringify(ids);
   
   const inputBack = document.createElement('input');
   inputBack.type = 'hidden';
   inputBack.name = 'back_url';
   inputBack.value = window.location.pathname;
   
-  form.appendChild(input);
+  form.appendChild(inputIds);
   form.appendChild(inputBack);
+  document.body.appendChild(form);
+  form.submit();
+}
+
+async function bulkEdit(field) {
+  const ids = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(c => c.dataset.id);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/lancamentos/editar-massa';
+  
+  const inputIds = document.createElement('input');
+  inputIds.type = 'hidden';
+  inputIds.name = 'ids';
+  inputIds.value = JSON.stringify(ids);
+  
+  const inputBack = document.createElement('input');
+  inputBack.type = 'hidden';
+  inputBack.name = 'back_url';
+  inputBack.value = window.location.pathname;
+  
+  form.appendChild(inputIds);
+  form.appendChild(inputBack);
+  
+  if (field === 'categoria') {
+    const val = document.getElementById('bulkCategorySelect').value;
+    if (!val) { alert('Selecione uma categoria'); return; }
+    const inputVal = document.createElement('input');
+    inputVal.type = 'hidden';
+    inputVal.name = 'categoria_id';
+    inputVal.value = val;
+    form.appendChild(inputVal);
+  } else if (field === 'portador') {
+    const val = document.getElementById('bulkPortadorSelect').value;
+    if (!val) { alert('Selecione um portador'); return; }
+    const inputVal = document.createElement('input');
+    inputVal.type = 'hidden';
+    inputVal.name = 'adicional_id';
+    inputVal.value = val;
+    form.appendChild(inputVal);
+  }
+  
   document.body.appendChild(form);
   form.submit();
 }

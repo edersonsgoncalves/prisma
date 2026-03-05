@@ -58,7 +58,7 @@ async def detalhe_fatura(
 ):
     fatura = (
         db.query(FaturaCartao)
-        .options(joinedload(FaturaCartao.cartao))
+        .options(joinedload(FaturaCartao.cartao).joinedload(ContaBancaria.adicionais))
         .filter(FaturaCartao.fatura_id == fatura_id)
         .first()
     )
@@ -142,12 +142,28 @@ async def detalhe_fatura(
 
     operacoes = (
         db.query(Operacao)
+        .options(joinedload(Operacao.adicional), joinedload(Operacao.transf_rel_obj))
         .filter(Operacao.operacoes_fatura == fatura_id, Operacao.operacoes_validacao == 1)
         .order_by(Operacao.operacoes_data_lancamento)
         .all()
     )
+    
+    # Agrupamento para a UI: Evita erro de 'NoneType' vs 'int' no Jinja2
+    # Ordenamos primeiro por adicional_id (None -> 0) e depois por data
+    ops_sorted = sorted(operacoes, key=lambda x: (x.operacoes_adicional_id or 0, x.operacoes_data_lancamento))
+    
+    from itertools import groupby
+    operacoes_agrupadas = []
+    for add_id, group in groupby(ops_sorted, key=lambda x: x.operacoes_adicional_id):
+        operacoes_agrupadas.append((add_id, list(group)))
+    
+    # Precisamos das contas para o modal de transferência
     contas = db.query(ContaBancaria).order_by(ContaBancaria.nome_conta).all()
-    categorias = db.query(Categoria).order_by(Categoria.categorias_nome).all()
+    categorias = db.query(Categoria).order_by(
+        func.coalesce(Categoria.categorias_pai_id, Categoria.categorias_id),
+        Categoria.categorias_pai_id.isnot(None),
+        Categoria.categorias_nome
+    ).all()
 
     # --- ENRIQUECIMENTO DE DADOS PARA A SIDEBAR ---
     stats = {
@@ -220,7 +236,9 @@ async def detalhe_fatura(
         "stats": stats,
         "limite_info": limite_info,
         "indice_faturas": indice_faturas,
-        "mes_venc_pt": mes_venc_pt
+        "mes_venc_pt": mes_venc_pt,
+        "faturas_todas": faturas_do_cartao,
+        "operacoes_agrupadas": operacoes_agrupadas,
     })
 
 @router.get("/{fatura_id}/fechar")
@@ -344,3 +362,65 @@ async def pagar_fatura(
     db.commit()
 
     return RedirectResponse(url=f"/faturas/{fatura.fatura_id}", status_code=303)
+
+
+@router.post("/mover-lancamento")
+async def mover_lancamento_fatura(
+    operacao_id: int = Form(...),
+    nova_fatura_id: int = Form(...),
+    db: Session = Depends(get_db),
+    sessao=Depends(require_login),
+):
+    op = db.query(Operacao).filter(Operacao.operacoes_id == operacao_id).first()
+    if not op:
+        return RedirectResponse(url="/faturas", status_code=303)
+    
+    id_antiga = op.operacoes_fatura
+    op.operacoes_fatura = nova_fatura_id
+    
+    log_evento(db, "UPDATE", "OPERACAO", operacao_id, f"Movido da fatura {id_antiga} para {nova_fatura_id}", sessao.get("id"))
+    db.commit()
+    
+    return RedirectResponse(url=f"/faturas/{nova_fatura_id}", status_code=303)
+
+
+@router.post("/converter-transferencia")
+async def converter_em_transferencia(
+    operacao_id: int = Form(...),
+    conta_destino_id: int = Form(...),
+    db: Session = Depends(get_db),
+    sessao=Depends(require_login),
+):
+    op = db.query(Operacao).filter(Operacao.operacoes_id == operacao_id).first()
+    if not op or op.operacoes_transf_rel:
+        return RedirectResponse(url="/faturas", status_code=303)
+
+    # 1. Atualiza a operação original para ser o lado Saída da Transferência (tipo 4)
+    op.operacoes_tipo = "4"
+    
+    # 2. Cria a operação correspondente (Entrada) na conta de destino
+    import uuid
+    grupo = f"TRF-{uuid.uuid4().hex[:10]}"
+    op.operacoes_grupo_id = grupo
+
+    nova_op = Operacao(
+        operacoes_data_lancamento=op.operacoes_data_lancamento,
+        operacoes_descricao=op.operacoes_descricao,
+        operacoes_conta=conta_destino_id,
+        operacoes_valor=abs(op.operacoes_valor), # Entrada (valor positivo)
+        operacoes_tipo="4", # Transferência
+        operacoes_efetivado=1,
+        operacoes_data_efetivado=datetime.now(),
+        operacoes_validacao=1,
+        operacoes_transf_rel=op.operacoes_id,
+        operacoes_grupo_id=grupo
+    )
+    db.add(nova_op)
+    db.flush()
+    
+    op.operacoes_transf_rel = nova_op.operacoes_id
+    
+    log_evento(db, "INSERT", "TRANSFERENCIA", nova_op.operacoes_id, f"Convertido de despesa#{op.operacoes_id} para transferência", sessao.get("id"))
+    db.commit()
+    
+    return RedirectResponse(url=f"/faturas/{op.operacoes_fatura}", status_code=303)
