@@ -14,6 +14,7 @@ from app.database import get_db
 from app.auth import require_login
 from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria
 from app.routers.lancamentos import log_evento
+from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
 router = APIRouter(prefix="/faturas", tags=["faturas"])
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -47,7 +48,6 @@ async def listar_faturas(
     return templates.TemplateResponse("faturas.html", {
         "request": request, "sessao": sessao, "faturas": faturas,
     })
-
 
 @router.get("/{fatura_id}", response_class=HTMLResponse)
 async def detalhe_fatura(
@@ -234,6 +234,20 @@ async def detalhe_fatura(
         "utilizado": utilizado_abs,
         "disponivel": limite - utilizado_abs
     }
+
+    status = ""
+    if fatura.fechado == 1:
+        status = "Fatura fechada"
+    else: 
+        if fatura.data_vencimento < date.today():
+            diff_dias = (date.today() - fatura.data_vencimento).days
+            status = f"Vencido há {diff_dias} dias"
+        elif fatura.data_vencimento > date.today():
+            diff_dias = (fatura.data_vencimento - date.today()).days
+            status = f"Vence em {diff_dias} dias"
+        elif fatura.data_vencimento == date.today():
+            status = "Vencimento hoje"
+    
     # -----------------------------------------------
 
     return templates.TemplateResponse("faturas_detalhes.html", {
@@ -253,6 +267,7 @@ async def detalhe_fatura(
         "faturas_todas": faturas_do_cartao,
         "operacoes_agrupadas": operacoes_agrupadas,
         "pagamentos": pagamentos,
+        "status": status,
     })
 
 @router.get("/{fatura_id}/fechar")
@@ -366,12 +381,7 @@ async def pagar_fatura(
     op_saida.operacoes_transf_rel = op_entrada.operacoes_id
     op_entrada.operacoes_transf_rel = op_saida.operacoes_id
 
-    # Atualiza saldo da fatura
-    if fatura.valor_total is None:
-        fatura.valor_total = Decimal("0.00")
-    fatura.valor_total -= Decimal(str(valor_float))
-
-    log_evento(db, "INSERT", "PAGAMENTO_FATURA", op_saida.operacoes_id, f"Pagamento de {valor_float} para fatura {fatura.fatura_id}", sessao.get("id"))
+    log_evento(db, "INSERT", "PAGAMENTO_FATURA", op_saida.operacoes_id, f"Pagamento de {formata_moeda_brl(valor_float)} para fatura {fatura.fatura_id}", sessao.get("id"))
     db.commit()
 
     return RedirectResponse(url=f"/faturas/{fatura.fatura_id}", status_code=303)

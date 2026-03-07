@@ -17,6 +17,8 @@ from app.database import get_db
 from app.auth import require_login
 from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao, LogOperacao
 from app.templates import templates
+from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
+
 
 router = APIRouter(prefix="/lancamentos", tags=["lancamentos"])
 
@@ -105,9 +107,11 @@ def recalcular_total_fatura(db: Session, fatura_id: int):
         return
 
     total = db.query(func.sum(Operacao.operacoes_valor)).filter(
-        Operacao.operacoes_fatura == fatura_id,
-        Operacao.operacoes_validacao == 1
-    ).scalar() or Decimal("0.00")
+            Operacao.operacoes_fatura == fatura_id,
+            Operacao.operacoes_valor < 0,
+            Operacao.operacoes_tipo !=0,
+            Operacao.operacoes_validacao == 1
+        ).scalar() or Decimal("0.00")
 
     fatura.valor_total = total
     db.commit()

@@ -9,7 +9,7 @@
   /* Paleta escura */
   --bg-base: #0f1117;
   --bg-surface: #1a1d27;
-  --bg-card: #20243a;
+  /* --bg-card: #20243a; */
   --bg-hover: #2a2e45;
   --border: rgba(255, 255, 255, 0.07);
   --border-active: rgba(255, 255, 255, 0.15);
@@ -249,13 +249,13 @@ textarea {
   left: 50%;
   transform: translateX(-50%) translateY(100px);
   background: #252a33;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50px;
   padding: 10px 25px;
   display: flex;
   align-items: center;
   gap: 20px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   z-index: 1000;
   transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
@@ -269,7 +269,7 @@ textarea {
   color: var(--primary);
   font-size: 14px;
   padding-right: 15px;
-  border-right: 1px solid rgba(255,255,255,0.1);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Kebab Menu Styles */
@@ -281,7 +281,7 @@ textarea {
 .kebab-btn {
   background: transparent;
   border: none;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255, 255, 255, 0.3);
   cursor: pointer;
   padding: 5px;
   border-radius: 4px;
@@ -289,7 +289,7 @@ textarea {
 }
 
 .kebab-btn:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.05);
   color: #fff;
 }
 
@@ -299,16 +299,17 @@ textarea {
   right: 0;
   background-color: #252a33;
   min-width: 160px;
-  box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-  z-index: 100;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
   margin-top: 5px;
 }
 
-.dropdown-content a, .dropdown-content button {
-  color: rgba(255,255,255,0.8);
+.dropdown-content a,
+.dropdown-content button {
+  color: rgba(255, 255, 255, 0.8);
   padding: 10px 15px;
   text-decoration: none;
   display: block;
@@ -321,8 +322,9 @@ textarea {
   transition: 0.2s;
 }
 
-.dropdown-content a:hover, .dropdown-content button:hover {
-  background-color: rgba(255,255,255,0.05);
+.dropdown-content a:hover,
+.dropdown-content button:hover {
+  background-color: rgba(255, 255, 255, 0.05);
   color: #fff;
 }
 
@@ -335,8 +337,8 @@ textarea {
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -358,6 +360,7 @@ textarea {
   left: 50%;
   transform: translate(-50%, -50%);
 }
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -760,7 +763,8 @@ select.form-control {
   align-items: center;
   justify-content: center;
   transition: var(--transition);
-  margin: 0 auto; /* para centralizar no flex/td */
+  margin: 0 auto;
+  /* para centralizar no flex/td */
 }
 
 .checkbox-custom:checked {
@@ -810,8 +814,8 @@ select.form-control {
   top: 100%;
   background-color: var(--bg-surface);
   min-width: 140px;
-  box-shadow: var(--shadow-sm);
-  z-index: 50;
+  box-shadow: var(--shadow);
+  z-index: 1000;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-active);
   overflow: hidden;
@@ -853,7 +857,7 @@ select.form-control {
   transform: translateX(-50%) translateY(100px);
   background: var(--bg-card);
   border: 1px solid var(--accent);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   border-radius: var(--radius-lg);
   padding: 12px 24px;
   display: flex;
