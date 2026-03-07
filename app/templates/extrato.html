@@ -226,9 +226,9 @@
               {% if op.operacoes_transf_rel %}
                 <span class="text-muted" style="font-size: 11px;">
                   {% if op.operacoes_valor > 0 %}
-                    De: {{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}
+                    De: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}</a>
                   {% else %}
-                    Para: {{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}
+                    Para: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}</a>
                   {% endif %}
                 </span>
               {% endif %}
