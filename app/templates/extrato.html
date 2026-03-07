@@ -190,13 +190,14 @@
           <th>Categoria</th>
           <th class="text-right">Valor</th>
           <th width="60" class="text-right">Ações</th>
+          <th width="10" class="text-right"></th>
         </tr>
       </thead>
       <tbody>
         {% for op in operacoes %}
         {% set is_efetivado = (op.operacoes_efetivado == 1) %}
         {% set is_atrasado = (not is_efetivado and op.operacoes_data_lancamento < hoje) %}
-        <tr class="{% if is_efetivado %}op-efetivado{% else %}op-pendente{% endif %} {% if is_atrasado %}op-atrasada{% endif %}">
+        <tr class="{% if is_efetivado %}{% else %}op-pendente{% endif %} {% if is_atrasado %}op-atrasada{% endif %}">
           <td class="text-center">
             <input type="checkbox" class="checkbox-custom row-checkbox" data-id="{{ op.operacoes_id }}" onclick="toggleRowSelection()">
           </td>
@@ -279,6 +280,21 @@
                 </form>
               </div>
             </div>
+          </td>
+          <td>
+            {% if op.operacoes_efetivado == 1 %}
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Success">
+                <circle cx="6" cy="6" r="5" fill="#22c55e" stroke="none"/>
+              </svg>
+            {% elif op.operacoes_efetivado == 0 and op.operacoes_data_lancamento >= hoje %}
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Neutral" style="vertical-align: middle; margin-right: 4px;">
+                <circle cx="6" cy="6" r="5" fill="#6b7280" stroke="none"/>
+              </svg>
+            {% else %}
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Error" style="vertical-align: middle; margin-right: 4px;">
+                <circle cx="6" cy="6" r="5" fill="#b91c1c" stroke="none"/>
+              </svg>
+            {% endif %}
           </td>
         </tr>
         {% else %}
@@ -406,7 +422,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Data</label>
-        <input type="date" name="data" class="form-control" value="{{ hoje }}" required>
+        <input type="date" name="data" id="nova_transf_data" class="form-control" value="{{ hoje }}" oninput="syncDataEfetivado()" onchange="syncDataEfetivado()" required>
       </div>
     </div>
 
@@ -418,9 +434,6 @@
           <option value="{{ a.conta_id }}">{{ a.nome_conta }}</option>
           {% endfor %}
         </select>
-        {% if conta_id %}
-        <input type="hidden" name="conta" value="{{ conta_id }}">
-        {% endif %}
       </div>
       <div class="form-group">
         <label class="form-label">Conta de Destino (Entrada)</label>
@@ -502,7 +515,7 @@
 
     <div id="divDataEfetivado" class="form-group mb-6" style="display:none">
       <label class="form-label">Data de Efetivação</label>
-      <input type="date" name="data_efetivado" class="form-control" value="{{ hoje }}">
+      <input type="date" name="data_efetivado" id="nova_transf_data_efetivado" class="form-control" value="{{ hoje }}">
     </div>
 
     <hr>
@@ -970,6 +983,17 @@
     const isEfetivado = document.getElementById('checkEfetivado').checked;
     document.getElementById('input_efetivado').value = isEfetivado ? "1" : "0";
     document.getElementById('divDataEfetivado').style.display = isEfetivado ? "" : "none";
+  }
+
+  function syncDataEfetivado() {
+    const isEfetivado = document.getElementById('checkEfetivado').checked;
+    if (!isEfetivado) {
+      const fieldData = document.getElementById('nova_transf_data');
+      const fieldDataEf = document.getElementById('nova_transf_data_efetivado');
+      if (fieldData && fieldDataEf) {
+        fieldDataEf.value = fieldData.value;
+      }
+    }
   }
 
   function toggleRepetir() {
