@@ -81,7 +81,7 @@
     </div>
     
     <button class="btn btn-md btn-primary" onclick="openModal('modalNovoLancamento')">+ Receita / Despesa</button>
-    <button class="btn btn-md btn-primary" onclick="openModal('modalNovaTransferencia')">+ Transferência</button>
+    <button class="btn btn-md btn-primary" onclick="openTransfModal()">+ Transferência</button>
   </div>
 </div>
 
@@ -199,7 +199,7 @@
     </div>
     <form action="/lancamentos/inserir" method="post">
       <input type="hidden" name="conta" value="{{ conta.conta_id }}">
-      
+
       <div class="form-group">
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
@@ -387,7 +387,7 @@
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Conta Origem</label>
-          <select name="conta_origem" id="edit_transf_origem" class="form-control" required>
+          <select name="conta" id="edit_transf_origem" class="form-control" required>
             {% for c in contas_todas %}
             <option value="{{ c.conta_id }}" {{ 'selected' if conta_id == c.conta_id }}>{{ c.nome_conta }}</option>
             {% endfor %}
@@ -457,10 +457,9 @@
         <label class="form-label">Conta de Origem (Saída)</label>
         <select name="conta" class="form-control" required>
           {% for a in contas_todas %}
-          <option value="{{ a.conta_id }}" {{ 'selected' if conta.conta_id == a.conta_id }}>{{ a.nome_conta }}</option>
+          <option value="{{ a.conta_id }}" {{ 'selected' if a.conta_id|int == conta.conta_id|int }}>{{ a.nome_conta }}</option>
           {% endfor %}
         </select>
-        <input type="hidden" name="conta" value="{{ conta.conta_id }}">
       </div>
       <div class="form-group">
         <label class="form-label">Conta de Destino (Entrada)</label>
@@ -557,6 +556,13 @@
 
 {% block extra_scripts %}
 <script>
+  function openTransfModal() {
+    openModal('modalNovaTransferencia');
+    // Pré-seleciona a conta de origem com a conta atual da página
+    var sel = document.querySelector('#modalNovaTransferencia select[name="conta"]');
+    if (sel) sel.value = '{{ conta.conta_id }}';
+  }
+
   function toggleDataEfetivado(prefix) {
     const check = document.getElementById(prefix + '_efetivado_check');
     const wrap = document.getElementById(prefix + '_data_efetivado_wrap');

@@ -185,10 +185,10 @@ async def inserir_transferencia(
     # Converte fatura para int ou None (lidando com strings vazias do form)
     fat_id = int(fatura) if fatura and fatura.strip() else None
 
-    # NOTA: não sobrescrevemos 'conta' com fat_id — conta é o conta_id real do cartão
     parcela_str = None
     if parcela_atual and parcela_total:
         parcela_str = f"{parcela_atual:03d}.{parcela_total:03d}"
+
 
     dt_operacao = date.fromisoformat(data)
 
@@ -207,6 +207,8 @@ async def inserir_transferencia(
     # Se o parâmetro repetir vier como string "on" (checkbox), converte para bool
     is_repetir = repetir == "on" or repetir == "1" or repetir is True
     
+    print (f"Repetição ativada: {is_repetir}")
+
     repeticoes = 1
     if is_repetir:
         if modo_repeticao == "parcelado":
@@ -238,7 +240,7 @@ async def inserir_transferencia(
             curr_valor_f += resto_divisao
         
         curr_parcela = None
-        if modo_repeticao == "parcelado":
+        if is_repetir and modo_repeticao == "parcelado":
             curr_parcela = f"{i+1:03d}.{num_parcelas:03d}"
         elif parcela_str:
             curr_parcela = parcela_str
@@ -402,7 +404,7 @@ async def inserir_lancamento(
             curr_valor += resto_divisao
 
         curr_parcela = None
-        if modo_repeticao == "parcelado":
+        if is_repetir and modo_repeticao == "parcelado":
             curr_parcela = f"{i+1:03d}.{repeticoes:03d}"
         elif parcela_str:
             curr_parcela = parcela_str
@@ -780,12 +782,13 @@ async def editar(
 @router.post("/editar-transferencia/{op_id}")
 async def editar_transferencia(
     request: Request,
-    op_id: int,
-    descricao: str = Form(...),
-    conta: int = Form(...),
-    conta_destino: int = Form(...),
-    valor: str = Form(...),
-    data: str = Form(...),
+    op_id: int, #
+    descricao: str = Form(...), #
+    conta: int = Form(alias="conta_origem"), #
+    conta_destino: int = Form(...), #
+    valor: str = Form(...), #
+    data: str = Form(...), #
+    data_efetivado: Optional[str] = Form(default=None), #
     adicional_id: Optional[int] = Form(default=None),
     escopo: str = Form(default="so_este"),
     next_url: Optional[str] = Form(default=None),
@@ -868,7 +871,7 @@ async def editar_transferencia(
             # Sincroniza valor e conta dependendo se é entrada ou saída
             if float(s_op.operacoes_valor) < 0:
                 s_op.operacoes_valor = -abs(valor_float)
-                s_op.operacoes_conta = conta_origem
+                s_op.operacoes_conta = conta
             else:
                 s_op.operacoes_valor = abs(valor_float)
                 s_op.operacoes_conta = conta_destino
