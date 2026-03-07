@@ -58,6 +58,21 @@
   }
   input:checked ~ .label-sim { color: var(--success); }
   input:not(:checked) ~ .label-nao { color: white; }
+
+  /* Kebab Fix no Extrato */
+  .table-wrapper {
+    overflow: visible !important;
+  }
+  /* Desabilita o hover automático do main.css */
+  .dropdown-kebab:hover .dropdown-content,
+  .dropdown-kebab:focus-within .dropdown-content {
+    display: none;
+  }
+  /* Exibe apenas via classe .show (controlado por JS) */
+  .dropdown-kebab .dropdown-content.show {
+    display: flex !important;
+    flex-direction: column;
+  }
 </style>
 
 {% endblock %}
@@ -232,7 +247,7 @@
           </td>
           <td class="text-right">
             <div class="dropdown-kebab">
-              <button class="kebab-btn">
+              <button class="kebab-btn" onclick="toggleKebab(event, this)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
               </button>
               <div class="dropdown-content">
@@ -750,6 +765,32 @@
 
 {% block extra_scripts %}
 <script>
+  // Fecha kebab ao clicar fora
+  window.addEventListener('click', function(event) {
+    if (!event.target.closest('.dropdown-kebab')) {
+      document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+    }
+  });
+
+  function toggleKebab(e, btn) {
+    e.stopPropagation();
+    const content = btn.nextElementSibling;
+    const isShown = content.classList.contains('show');
+    document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
+    if (!isShown) {
+      content.classList.add('show');
+      // Inverte para cima se sair da tela
+      const rect = content.getBoundingClientRect();
+      if (rect.bottom > window.innerHeight) {
+        content.style.top = 'auto';
+        content.style.bottom = '100%';
+      } else {
+        content.style.top = '100%';
+        content.style.bottom = 'auto';
+      }
+    }
+  }
+
   function toggleDataEfetivado(prefix) {
     const check = document.getElementById(prefix + '_efetivado_check');
     const wrap = document.getElementById(prefix + '_data_efetivado_wrap');
