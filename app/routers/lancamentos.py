@@ -128,6 +128,34 @@ def log_evento(db: Session, acao: str, entidade: str, entidade_id: int, detalhes
     db.add(log)
 
 
+@router.get("/listar")
+async def listar_lancamentos(
+    request: Request,
+    limit: int = Query(300),
+    conta_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    sessao: dict = Depends(require_login)
+):
+    from sqlalchemy import desc
+    query = db.query(Operacao)
+    if conta_id:
+        query = query.filter(Operacao.operacoes_conta == conta_id)
+    ops = query.order_by(desc(Operacao.operacoes_data_lancamento)).limit(limit).all()
+    resultado = []
+    for op in ops:
+        tipo_dc = {1: "C", 3: "D", 4: "T"}.get(op.operacoes_tipo, "D")
+        resultado.append({
+            "operacoes_id": op.operacoes_id,
+            "operacoes_descricao": op.operacoes_descricao,
+            "operacoes_valor": float(op.operacoes_valor or 0),
+            "operacoes_data_lancamento": op.operacoes_data_lancamento.isoformat() if op.operacoes_data_lancamento else None,
+            "operacoes_tipo": op.operacoes_tipo,
+            "tipo": tipo_dc,
+            "operacoes_efetivado": op.operacoes_efetivado or 0,
+            "ofx_fitid": getattr(op, "operacoes_fitid", None)
+        })
+    return JSONResponse(content={"operacoes": resultado})
+
 @router.get("/nova-despesa", response_class=HTMLResponse)
 async def form_despesa(request: Request, sessao=Depends(require_login), db=Depends(get_db)):
     return templates.TemplateResponse("lancamentos/nova_despesa.html",

@@ -37,6 +37,7 @@ SCORE_DATA_1DIA   = 20
 SCORE_DATA_3DIAS  = 10
 SCORE_MEMO_80     = 20
 SCORE_TIPO_IGUAL  = 10
+PENALIDADE_TIPO   = -60   # tipo OFX ≠ tipo DB → score cai para NOVO (máx teórico cross-tipo: 30)
 
 THRESHOLD_DUP    = 100
 THRESHOLD_FORTE  = 70
@@ -133,6 +134,16 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
         if not op:
             raise ValueError(f"Operação {payload.match_id} não encontrada.")
 
+        # Sobrescrever data e valor sempre com os dados do OFX:
+        op.operacoes_data_lancamento = data_lancamento
+        op.operacoes_valor = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
+
+        # Concatenar a descrição do OFX (até 20 caracteres)
+        memo_str = (payload.memo or "").strip()[:20]
+        if memo_str and f"({memo_str})" not in (op.operacoes_descricao or ""):
+            nova_desc = f"{op.operacoes_descricao or ''} ({memo_str})".strip()
+            op.operacoes_descricao = nova_desc[:255]
+
         op.operacoes_efetivado        = 1 if payload.como_efetivado else 0
         if payload.como_efetivado:
             op.operacoes_data_efetivado = datetime.combine(data_lancamento, datetime.min.time())
@@ -178,11 +189,36 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
 # HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════════
 
+TRNTYPE_MAP = {
+    "DEBIT": "D", "CREDIT": "C", "INT": "C", "DIV": "C",
+    "FEE": "D", "SRVCHG": "D", "DEP": "C", "ATM": "D",
+    "POS": "D", "XFER": "D", "CHECK": "D", "PAYMENT": "D",
+    "CASH": "D", "DIRECTDEP": "C", "DIRECTDEBIT": "D",
+    "REPEATPMT": "D", "OTHER": "D",
+}
+
+
 def _normalizar(t: dict) -> dict:
-    """Padroniza o dict vindo do OFXReader para campos internos."""
+    """Padroniza o dict vindo do OFXParser para campos internos.
+
+    Ordem de prioridade para determinar D/C:
+      1. Campo 'tipo' já calculado pelo OFXParser (mais confiável)
+      2. Campo TRNTYPE presente no dict bruto
+      3. Sinal do valor (fallback)
+    """
     valor_raw = float(t.get("valor") or t.get("TRNAMT") or 0)
-    tipo  = "C" if valor_raw >= 0 else "D"
     valor = abs(valor_raw)
+
+    # 1. OFXParser já resolveu o tipo — usa direto
+    if t.get("tipo") in ("C", "D"):
+        tipo = t["tipo"]
+    # 2. TRNTYPE presente no dict bruto (parsing manual / outro fonte)
+    elif t.get("TRNTYPE"):
+        trntype = str(t["TRNTYPE"]).upper().strip()
+        tipo = TRNTYPE_MAP.get(trntype, "D" if valor_raw < 0 else "C")
+    # 3. Fallback: sinal do valor
+    else:
+        tipo = "D" if valor_raw < 0 else "C"
 
     data_raw = t.get("data") or t.get("DTPOSTED") or t.get("date")
     if isinstance(data_raw, str):
@@ -212,7 +248,6 @@ def _buscar_candidatos(
     data_max = ofx["data"] + timedelta(days=JANELA_DIAS)
 
     q = db.query(Operacao).filter(
-        Operacao.operacoes_valor           == round(ofx["valor"], 2),
         Operacao.operacoes_data_lancamento >= data_min,
         Operacao.operacoes_data_lancamento <= data_max,
     )
@@ -225,14 +260,25 @@ def _buscar_candidatos(
 def _calcular_score(ofx: dict, op: Operacao) -> int:
     score = 0
 
-    # FITID idêntico → duplicidade certa
+    # FITID idêntico → duplicidade certa, FITID diferente → já vinculado a outro, anula match
     fitid_db = getattr(op, "operacoes_fitid", None)
-    if ofx["fitid"] and fitid_db and fitid_db == ofx["fitid"]:
-        return SCORE_FITID_MATCH
+    if fitid_db:
+        if fitid_db == ofx["fitid"]:
+            return SCORE_FITID_MATCH
+        else:
+            return 0
 
     # Valor
-    if abs(float(op.operacoes_valor or 0) - ofx["valor"]) < 0.01:
+    v_db = abs(float(op.operacoes_valor or 0))
+    v_ofx = abs(ofx["valor"])
+    if abs(v_db - v_ofx) < 0.01:
         score += SCORE_VALOR_EXATO
+    elif v_ofx > 0:
+        diff = abs(v_db - v_ofx)
+        if diff <= 2.0 or diff / v_ofx <= 0.10:
+            score += 35  # Quase exato
+        elif diff <= 5.0 or diff / v_ofx <= 0.20:
+            score += 20  # Diferença tolerável
 
     # Data
     if op.operacoes_data_lancamento:
@@ -242,9 +288,12 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
         elif diff <= 3: score += SCORE_DATA_3DIAS
 
     # Tipo (C/D vs operacoes_tipo int)
+    # Tipo igual: bônus. Tipo diferente: penalidade pesada que inviabiliza MATCH_FORTE.
     tipo_db = TIPO_INT_PARA_DC.get(op.operacoes_tipo, "D")
     if tipo_db == ofx["tipo"]:
         score += SCORE_TIPO_IGUAL
+    else:
+        score += PENALIDADE_TIPO
 
     # Similaridade de descrição
     memo_ofx = ofx["memo"].lower()
