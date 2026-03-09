@@ -8,11 +8,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from app.templates import templates
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import extract, func, inspect
+from sqlalchemy import extract, func, inspect,select
 
 from app.database import get_db
 from app.auth import require_login
-from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria
+from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria, CartaoAdicional
 from app.routers.lancamentos import log_evento
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
@@ -282,7 +282,19 @@ async def fechar_fatura(
     if not fatura or fatura.fechado == 1:
         return RedirectResponse(url=f"/faturas/{fatura_id}", status_code=303)
 
-    # --- RESOLUÇÃO DO PROBLEMA ---
+    # Verifica se há operações não conciliadas
+    operacoes_nao_conciliadas = db.query(func.count(Operacao.operacoes_id)).filter(
+        Operacao.operacoes_fatura == fatura_id,
+        Operacao.operacoes_efetivado == 0,
+        Operacao.operacoes_tipo != 0
+    ).scalar()
+
+    if operacoes_nao_conciliadas:
+        return RedirectResponse(
+            url=f"/faturas/{fatura_id}?erro=conciliacao", 
+            status_code=303
+        )
+
     # Se data_vencimento for None, usamos a data de hoje como base
     base_venc = fatura.data_vencimento or date.today()
     
@@ -293,11 +305,16 @@ async def fechar_fatura(
     # Agora a soma nunca falhará
     proxima_venc = base_venc + relativedelta(months=1)
     proxima_fech = base_fech + relativedelta(months=1)
-    # -----------------------------
 
-    # 1. Marca como fechada
-    fatura.fechado = 1
-    
+    # Atualiza valores da fatura atual
+    valor_total = db.query(func.sum(Operacao.operacoes_valor)).filter(
+        Operacao.operacoes_fatura == fatura_id,
+        Operacao.operacoes_efetivado == 1,
+        Operacao.operacoes_tipo != 0
+    ).scalar() or Decimal("0.00")
+
+    fatura.valor_total = valor_total
+
     # 2. Verifica se a próxima fatura já existe para esse cartão
     existe = db.query(FaturaCartao).filter(
         FaturaCartao.conta_id == fatura.conta_id,
@@ -316,13 +333,54 @@ async def fechar_fatura(
         db.add(nova_fatura)
         db.flush() # Garante que a nova_fatura ganhe um ID antes do log
     
+        fatura_id_final = nova_fatura.fatura_id  # Captura o ID recém-criado
+    else:
+        fatura_id_final = existe.fatura_id 
+
+    cartao_adicional = db.query(CartaoAdicional).filter(
+        CartaoAdicional.conta_id == fatura.conta_id
+    ).first()
+
+    cartao_adicional_nome = cartao_adicional.apelido if cartao_adicional else "Sem Nome"
+
+
+    # Gerar lançamento de pagamento para próxima fatura
+    op_pagamento_saida = Operacao(
+        operacoes_data_lancamento=base_venc,
+        operacoes_valor=-abs(valor_total),
+        operacoes_tipo=0,
+        operacoes_validacao=1,
+        operacoes_efetivado=0,
+        operacoes_conta=fatura.cartao.contas_prev_debito,
+        operacoes_descricao=f"Pagamento fatura | {cartao_adicional_nome} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
+    )
+    db.add(op_pagamento_saida)
+    db.flush()
+    op_pagamento_entrada = Operacao(
+        operacoes_data_lancamento=base_venc,
+        operacoes_valor=abs(valor_total),
+        operacoes_tipo=0,
+        operacoes_transf_rel=op_pagamento_saida.operacoes_id,
+        operacoes_validacao=1,
+        operacoes_efetivado=0,
+        operacoes_fatura=fatura_id_final,
+        operacoes_conta=fatura.conta_id,
+        operacoes_descricao=f"Pagamento fatura | {cartao_adicional_nome} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
+    )
+    db.add(op_pagamento_entrada)
+    db.flush()
+    op_pagamento_saida.operacoes_transf_rel = op_pagamento_entrada.operacoes_id
+
+    fatura.fechado = 1
+    
+    
     log_evento(db, "UPDATE", "FATURA", fatura.fatura_id, 
-               f"Fatura fechada. Próxima gerada para {proxima_venc}", 
+               f"Fatura fechada no valor de {formata_moeda_brl(abs(valor_total))}. Próxima fatura com vencimento em {mostra_data(proxima_venc)}", 
                sessao.get("id"))
     
     db.commit()
-    
-    return RedirectResponse(url=f"/faturas/{fatura_id}", status_code=303)
+
+    return RedirectResponse(url=f"/faturas/{nova_fatura.fatura_id}", status_code=303)
 
 
 @router.post("/pagar")
