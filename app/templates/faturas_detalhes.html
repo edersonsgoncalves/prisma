@@ -487,8 +487,8 @@
       <div class="sidebar-block-title">Fatura Atual (R$)</div>
       <table class="summary-table">
         <tr>
-          <td class="label-muted">Fechamento</td>
-          <td>{{ mostra_data(fatura.data_fechamento) }}</td>
+          <td class="label-muted">Vencimento</td>
+          <td>{{ mostra_data(fatura.data_vencimento) }}</td>
         </tr>
         <tr>
           <td class="label-muted">Fatura anterior</td>
@@ -513,6 +513,13 @@
         {% if not fatura.fechado %}
           <button class="btn btn-outline btn-sm w-full" style="background-color: var(--primary-light); color: var(--primary);" onclick="openModal('modalAdicionarPagamento')">Lançar pagamento</button>
           <a href="/faturas/{{ fatura.fatura_id }}/fechar" class="btn btn-outline btn-sm w-full text-center">Fechar fatura</a>
+          {% if request.query_params.get('erro') == 'conciliacao' %}
+            <div class="alert alert-danger">
+                Ainda existem operações não conciliadas.
+                <br>
+                Corrija e tente novamente.
+            </div>
+          {% endif %}
         {% else %}
           <button class="btn btn-outline btn-sm w-full btn-danger" >Reabrir Fatura</button>
         {% endif %}
@@ -537,6 +544,7 @@
         </tr>
       </table>
     </div>
+    
 
     <!-- Bloco: Limite -->
     <!-- <div class="sidebar-block">
@@ -1166,9 +1174,9 @@
         <div class="form-group">
           <label class="form-label">Fatura Vinculada</label>
           <select name="fatura" class="form-control" required>
-            {% for f in faturas_todas %}
+            {% for f in faturas_todas if f.fechado == 0 %}
               <option value="{{ f.fatura_id }}" {{ 'selected' if f.fatura_id == fatura.fatura_id }}>
-                {{ f.data_vencimento.year }}-{{ "%02d"|format(f.data_vencimento.month) if f.data_vencimento else "00" }} ({{ 'Aberta' if not f.fechado else 'Fechada' }})
+                {{ "%02d"|format(f.data_vencimento.month) if f.data_vencimento else "00" }}/{{ f.data_vencimento.year }} ({{ 'Aberta' if not f.fechado else 'Fechada' }})
               </option>
             {% endfor %}
           </select>
