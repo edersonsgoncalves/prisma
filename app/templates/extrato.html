@@ -91,7 +91,7 @@
 </div>
 
 <!-- Resumo do Extrato -->
-<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+<div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
   <div class="stat-card">
     <div class="stat-label">Saldo Anterior</div>
     <div class="stat-value {{ cor_valor(saldo_anterior) }}">{{ formata_moeda(saldo_anterior) }}</div>
@@ -102,8 +102,14 @@
     <div class="stat-value {{ cor_valor(mov_mes) }}">{{ formata_moeda(mov_mes) }}</div>
   </div>
   <div class="stat-card">
+    <div class="stat-label">Lançamentos Pendentes</div>
+    {% set mov_mes_pend = operacoes | selectattr('operacoes_efetivado', 'equalto', 0) | sum(attribute='operacoes_valor') %}
+    <div class="stat-value muted">{{ formata_moeda(mov_mes_pend) }}</div>
+  </div>
+  <div class="stat-card">
     <div class="stat-label">Saldo Atual</div>
     <div class="stat-value {{ cor_valor(saldo_anterior + mov_mes) }}">{{ formata_moeda(saldo_anterior + mov_mes) }}</div>
+    {% if mov_mes_pend != 0 %}<div class="text-muted">Saldo Previsto: {{ formata_moeda(saldo_anterior + mov_mes + mov_mes_pend) }}</div>{% endif %}
   </div>
 </div>
 
@@ -115,9 +121,26 @@
       <label class="form-label" style="font-size: 11px;">Conta</label>
       <select name="c" class="form-control form-control-sm" onchange="this.form.submit()">
         <option value="">Todas as Contas</option>
-        {% for count_item in contas_todas %}
-        <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }}</option>
-        {% endfor %}
+        <optgroup label="Conta Corrente">
+          {% for count_item in contas_todas if count_item.tipo_conta == 1 %}
+            <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }} (Conta Corrente)</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Dinheiro/Carteira">
+          {% for count_item in contas_todas if count_item.tipo_conta == 2 %}
+            <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }} (Dinheiro)</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Investimentos">
+          {% for count_item in contas_todas if count_item.tipo_conta == 5 %}
+            <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }} (Investimentos)</option>
+          {% endfor %}
+        </optgroup>
+        <optgroup label="Financeiro">
+          {% for count_item in contas_todas if count_item.tipo_conta == 6 or count_item.tipo_conta == 3 %}
+            <option value="{{ count_item.conta_id }}" {{ 'selected' if conta_id == count_item.conta_id or conta_id == count_item.conta_id|string }}>{{ count_item.nome_conta }} (Financeiro)</option>
+          {% endfor %}
+        </optgroup>
       </select>
     </div>
 
@@ -224,12 +247,12 @@
           <td>
             <div class="flex flex-col">
               <span class="font-bold">{{ op.operacoes_descricao }}</span>
-              {% if op.operacoes_transf_rel %}
+              {% if op.operacoes_transf_rel and op.operacoes_tipo == 4 %}
                 <span class="text-muted" style="font-size: 11px;">
                   {% if op.operacoes_valor > 0 %}
-                    De: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}</a>
+                    De: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }} ({{ tipos_conta_map.get(op.transf_rel_obj.conta.tipo_conta if op.transf_rel_obj else 'Desconhecida') }})</a>
                   {% else %}
-                    Para: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }}</a>
+                    Para: <a href="/extrato?c={{op.transf_rel_obj.operacoes_conta}}&cat=&status=&m={{ mes }}&y={{ ano }}">{{ op.transf_rel_obj.conta.nome_conta if op.transf_rel_obj else 'Desconhecida' }} ({{ tipos_conta_map.get(op.transf_rel_obj.conta.tipo_conta if op.transf_rel_obj else 'Desconhecida') }})</a>
                   {% endif %}
                 </span>
               {% endif %}
@@ -255,17 +278,28 @@
                 {% if not op.operacoes_efetivado %}
                 <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post" style="margin:0;">
                   <button type="submit" class="text-success" style="text-align: left;">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="display:inline;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg> Efetivar
+                    Efetivar
                   </button>
                 </form>
                 {% endif %}
-                <button type="button"
-                  data-id="{{ op.operacoes_id }}"
-                  data-tipo="{{ op.operacoes_tipo }}"
-                  data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
-                  data-parcela="{{ op.operacoes_parcela or '' }}"
-                  data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
-                  onclick="openEditOpModal(this)">Editar</button>
+                {% if op.operacoes_tipo != 0 %}
+                  <button type="button"
+                    data-id="{{ op.operacoes_id }}"
+                    data-tipo="{{ op.operacoes_tipo }}"
+                    data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                    data-parcela="{{ op.operacoes_parcela or '' }}"
+                    data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                    onclick="openEditOpModal(this)">Editar</button>
+                
+                {% else %}
+                  <button type="button"
+                    data-id="{{ op.operacoes_id }}"
+                    data-tipo="{{ op.operacoes_tipo }}"
+                    data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                    data-parcela="{{ op.operacoes_parcela or '' }}"
+                    data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
+                    onclick="openEditOpModal(this)">Editar</button>
+                {% endif %}
                 <button type="button"
                   data-id="{{ op.operacoes_id }}"
                   data-desc="{{ op.operacoes_descricao }}"
@@ -660,11 +694,6 @@
               <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
               {% endfor %}
             </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
             <optgroup label="Dinheiro/Carteira">
               {% for c in contas_todas if c.tipo_conta == 2 %}
               <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
@@ -673,6 +702,11 @@
             <optgroup label="Investimentos">
               {% for c in contas_todas if c.tipo_conta == 5 %}
               <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Financeiro">
+              {% for c in contas_todas if c.tipo_conta == 3 or c.tipo_conta == 6 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
               {% endfor %}
             </optgroup>
           </select>
@@ -771,6 +805,97 @@
         <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
       </div>
     </form>
+    
+    <!-- Seção: Pagamento de Fatura -->
+    <form id="formEditarPagFatura" method="post" style="display:none">
+      <input type="hidden" name="escopo" id="edit_escopo_pag_fatura" value="so_este">
+      <div class="form-group">
+        <label class="form-label">Descrição</label>
+        <input type="text" name="descricao" id="edit_pag_fatura_desc" class="form-control" required>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Valor</label>
+          <input type="text" name="valor" id="edit_pag_fatura_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Data</label>
+          <input type="date" name="data" id="edit_pag_fatura_data" class="form-control" required>
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Conta Origem</label>
+          <select name="conta_origem" id="edit_pag_fatura_origem" class="form-control" required>
+            <optgroup label="Conta Corrente">
+              {% for c in contas_todas if c.tipo_conta == 1 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Cartões de Crédito">
+              {% for c in contas_todas if c.tipo_conta == 4 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Dinheiro/Carteira">
+              {% for c in contas_todas if c.tipo_conta == 2 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Financeiro">
+              {% for c in contas_todas if c.tipo_conta == 3 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Conta Destino</label>
+          <select name="conta_destino" id="edit_pag_fatura_destino" class="form-control" required>
+            <optgroup label="Conta Corrente">
+              {% for c in contas_todas if c.tipo_conta == 1 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Cartões de Crédito">
+              {% for c in contas_todas if c.tipo_conta == 4 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Dinheiro/Carteira">
+              {% for c in contas_todas if c.tipo_conta == 2 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+              {% endfor %}
+            </optgroup>
+            <optgroup label="Financeiro">
+              {% for c in contas_todas if c.tipo_conta == 3 %}
+              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
+              {% endfor %}
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <!-- Efetivado (transferência) -->
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="edit_transf_efetivado_check" onchange="toggleDataEfetivado('edit_transf')">
+            <span>Já efetivado</span>
+          </label>
+          <div id="edit_transf_data_efetivado_wrap" style="display:none">
+            <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
+            <input type="date" name="data_efetivado" id="edit_transf_data_efetivado" class="form-control">
+          </div>
+        </div>
+        <input type="hidden" name="efetivado" id="edit_transf_efetivado_val" value="0">
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
+      </div>
+    </form>
+
+
   </div>
 </div>
 
@@ -838,12 +963,21 @@
   async function openEditOpModal(btn) {
     const d = btn.dataset;
     const opId = d.id;
-    const isTransf = d.tipo == "4" || d.transfRel;
+    let titulo = "";
 
-    document.getElementById('editModalTitle').innerText = isTransf ? 'Editar Transferência' : 'Editar Lançamento';
+    if (d.tipo == "0" && d.transfRel) {
+      titulo = "Editar Pagamento de Fatura";
+    } else if (d.tipo == "4" && d.transfRel){
+      titulo = "Editar Transferência";
+    } else {
+      titulo = "Editar Lançamento";
+    }
+
+    document.getElementById('editModalTitle').innerText = titulo;
     document.getElementById('editModalLoading').style.display = 'flex';
     document.getElementById('formEditarOpRD').style.display = 'none';
     document.getElementById('formEditarTransf').style.display = 'none';
+    document.getElementById('formEditarPagFatura').style.display = 'none';
 
     // Reset da área de conversão
     const divConv = document.getElementById('divConverter');
@@ -857,7 +991,18 @@
       const resp = await fetch(`/lancamentos/editar/${opId}`);
       const data = await resp.json();
 
-      if (data.tipo == 4 || data.transf_rel) {
+      if (data.tipo == 0 || data.transf_rel) {
+        // === PAGAMENTO FATURA ===
+        const form = document.getElementById('formEditarPagFatura');
+        form.action = `/lancamentos/editar-pagamento-fatura/${opId}`;
+        document.getElementById('edit_pag_fatura_desc').value = data.descricao || '';
+        document.getElementById('edit_pag_fatura_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+        document.getElementById('edit_pag_fatura_data').value = data.data || '';
+        document.getElementById('edit_pag_fatura_origem').value = data.conta || '';
+        document.getElementById('edit_pag_fatura_destino').value = data.conta_destino || '';
+        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado);
+        form.style.display = '';
+      } else if (data.tipo == 4 || data.transf_rel) {
         // === TRANSFERÊNCIA ===
         const form = document.getElementById('formEditarTransf');
         form.action = `/lancamentos/editar-transferencia/${opId}`;

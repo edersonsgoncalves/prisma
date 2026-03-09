@@ -120,6 +120,15 @@ async def extrato_unificado(
         Categoria.categorias_nome
     ).all()
     contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).order_by(ContaBancaria.nome_conta.asc()).all()
+    
+    mapa_tipo_conta = {
+        0: "Pagamento de Fatura",
+        1: "Corrente",
+        2: "Espécie",
+        3: "Financeiro",
+        5: "Investimento",
+        6: "Financeiro"
+    }
 
     return templates.TemplateResponse("extrato.html", {
         "request": request,
@@ -129,6 +138,7 @@ async def extrato_unificado(
         "saldo_anterior": saldo_anterior,
         "categorias": categorias,
         "contas_todas": contas_todas,
+        "tipos_conta_map": mapa_tipo_conta,
         "mes": m,
         "ano": y,
         "cat_id": cat,

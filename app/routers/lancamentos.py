@@ -234,8 +234,6 @@ async def inserir_transferencia(
     
     # Se o parâmetro repetir vier como string "on" (checkbox), converte para bool
     is_repetir = repetir == "on" or repetir == "1" or repetir is True
-    
-    print (f"Repetição ativada: {is_repetir}")
 
     repeticoes = 1
     if is_repetir:
@@ -253,6 +251,7 @@ async def inserir_transferencia(
 
     faturas_para_recalcular = set()
     for i in range(repeticoes):
+        # 1. PRIMEIRO calcula a data da parcela atual
         curr_dt = dt_operacao
         if i > 0:
             if modo_repeticao == "parcelado" or frequencia == "mensal":
@@ -262,7 +261,26 @@ async def inserir_transferencia(
             elif frequencia == "anual":
                 curr_dt = dt_operacao + relativedelta(years=i)
 
-        # Valor ajustado para a última parcela
+        # 2. DEFINIÇÃO DA FATURA (AQUI ESTÁ O SEGREDO)
+        curr_fat_saida = None
+        curr_fat_entrada = None
+
+        # Lógica para a saída (Cartão)
+        # SAÍDA: Só processa fatura se a ORIGEM for cartão e tiver fat_id
+        if conta_origem_obj and conta_origem_obj.tipo_conta == 4:
+            if i == 0:
+                curr_fat_saida = fat_id # Usa o ID que veio do <select>
+            else:
+                curr_fat_saida = get_or_create_fatura(db, conta, curr_dt)
+
+        # ENTRADA: SÓ gera fatura se o DESTINO for cartão (Tipo 4)
+        # Se for Conta Corrente (Tipo 1, 2, etc), curr_fat_entrada SERÁ SEMPRE None
+        if conta_destino_obj and conta_destino_obj.tipo_conta == 4:
+            curr_fat_entrada = get_or_create_fatura(db, conta_destino, curr_dt)
+        else:
+            curr_fat_entrada = None # Garante que para CC o campo fique vazio
+
+        # 3. Resto da lógica de valores e parcelas
         curr_valor_f = valor_unitario
         if i == repeticoes - 1:
             curr_valor_f += resto_divisao
@@ -273,13 +291,10 @@ async def inserir_transferencia(
         elif parcela_str:
             curr_parcela = parcela_str
 
-        # Define data_efetivado apenas para o primeiro da série se for o caso
         curr_efetivado = efetivado if i == 0 else 0
         curr_dt_efetivado = dt_efetivado if i == 0 else None
 
-        curr_fat_saida = get_or_create_fatura(db, conta, curr_dt) if fat_id else None
-        curr_fat_entrada = get_or_create_fatura(db, conta_destino, curr_dt) if fat_id else None
-
+        # 4. CRIAÇÃO DAS OPERAÇÕES (Note que removi as linhas duplicadas daqui)
         op_saida = Operacao(
             operacoes_data_lancamento=curr_dt,
             operacoes_descricao=descricao,
@@ -308,15 +323,18 @@ async def inserir_transferencia(
             operacoes_grupo_id=grupo_id,
             operacoes_adicional_id=adicional_id
         )
+        
         db.add(op_saida); db.add(op_entrada); db.flush()
 
-        if curr_fat_saida: faturas_para_recalcular.add(curr_fat_saida)
-        if curr_fat_entrada: faturas_para_recalcular.add(curr_fat_entrada)
+        # Vincula os IDs das transferências
         op_saida.operacoes_transf_rel = op_entrada.operacoes_id
         op_entrada.operacoes_transf_rel = op_saida.operacoes_id
 
+        if curr_fat_saida: faturas_para_recalcular.add(curr_fat_saida)
+        if curr_fat_entrada: faturas_para_recalcular.add(curr_fat_entrada)
+
         if i == 0:
-            log_evento(db, "INSERT", "TRANSFERÊNCIA", op_saida.operacoes_id, f"Série '{descricao}' compartilhada no Grupo {grupo_id}", sessao.get("id"))
+            log_evento(db, "INSERT", "TRANSFERÊNCIA", op_saida.operacoes_id, f"Série '{descricao}'...", sessao.get("id"))
     
     db.commit()
     
