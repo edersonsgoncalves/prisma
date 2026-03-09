@@ -23,22 +23,39 @@ async def dashboard(
     sessao: dict = Depends(require_login),
     db: Session = Depends(get_db),
 ):
-    # Contas bancárias (exceto cartões tipo 4)
-    contas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).all()
+    # 1. Busca as contas válidas para o saldo (Filtro corrigido com None)
+    contas_validas_query = db.query(ContaBancaria).filter(
+        ContaBancaria.tipo_conta != 4,
+        or_(
+            ContaBancaria.contas_desconsiderar_saldo == None,
+            ContaBancaria.contas_desconsiderar_saldo == 0
+        )
+    ).order_by(ContaBancaria.nome_conta.asc())
+    contas = contas_validas_query.all()
+    ids_contas_validas = [c.conta_id for c in contas]
 
-    # Saldo de cada conta no período e saldo total
-    saldos = {}
-    total_saldos = 0
-    for conta in contas:
-        total = db.query(func.sum(Operacao.operacoes_valor)).filter(
-            Operacao.operacoes_conta == conta.conta_id,
-            Operacao.operacoes_efetivado == 1,
-            Operacao.operacoes_validacao == 1,
-        ).scalar() or 0
-        saldos[conta.conta_id] = total
-        total_saldos += total
+    # 2. OTIMIZAÇÃO: Busca TODOS os saldos de uma vez só em vez de usar um loop for
+    # Isso reduz drasticamente o tempo de carregamento
+    saldos_query = db.query(
+        Operacao.operacoes_conta,
+        func.sum(Operacao.operacoes_valor).label("total")
+    ).filter(
+        Operacao.operacoes_conta.in_(ids_contas_validas),
+        Operacao.operacoes_efetivado == 1,
+        Operacao.operacoes_validacao == 1
+    ).group_by(Operacao.operacoes_conta).all()
 
-    # Receitas do mês (confirmadas/efetivadas)
+    # Transforma o resultado em um dicionário {id_conta: valor}
+    saldos = {row.operacoes_conta: row.total for row in saldos_query}
+    
+    # Garante que contas sem operações apareçam com saldo 0
+    for c_id in ids_contas_validas:
+        if c_id not in saldos:
+            saldos[c_id] = 0
+            
+    total_saldos = sum(saldos.values())
+
+    # 3. Receitas e Despesas (Queries permanecem as mesmas, apenas garantindo consistência)
     receitas_efetivadas = db.query(func.sum(Operacao.operacoes_valor)).filter(
         extract('month', Operacao.operacoes_data_lancamento) == mes,
         extract('year', Operacao.operacoes_data_lancamento) == ano,
@@ -47,7 +64,6 @@ async def dashboard(
         Operacao.operacoes_validacao == 1,
     ).scalar() or 0
 
-    # Despesas do mês (totais previstas e efetivadas separadamente)
     despesas_totais = db.query(func.sum(Operacao.operacoes_valor)).filter(
         extract('month', Operacao.operacoes_data_lancamento) == mes,
         extract('year', Operacao.operacoes_data_lancamento) == ano,
@@ -125,7 +141,7 @@ async def get_chart_data(
     y: int = Query(...),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
-):
+    ):
     from sqlalchemy.orm import aliased
     Pai = aliased(Categoria)
     
