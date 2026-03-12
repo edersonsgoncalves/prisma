@@ -100,17 +100,19 @@
               </thead>
               <tbody>
                 {% for conta in contas %}
-                <tr>
-                  <td>
-                    <div class="flex items-center gap-2">
-                      <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent);"></div>
-                      <a href="/extrato?c={{ conta.conta_id }}">{{ conta.nome_conta }}</a>
-                    </div>
-                  </td>
-                  <td class="text-right font-bold {{ cor_valor(saldos[conta.conta_id]) }}">
-                    {{ formata_moeda(saldos[conta.conta_id]) }}
-                  </td>
-                </tr>
+                  {% if conta.tipo_conta in (1,2) %}
+                    <tr>
+                      <td>
+                        <div class="flex items-center gap-2">
+                          <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent);"></div>
+                          <a href="/extrato?c={{ conta.conta_id }}">{{ conta.nome_conta }}</a>
+                        </div>
+                      </td>
+                      <td class="text-right font-bold {{ cor_valor(saldos[conta.conta_id]) }}">
+                        {{ formata_moeda(saldos[conta.conta_id]) }}
+                      </td>
+                    </tr>
+                  {% endif %}
                 {% endfor %}
               </tbody>
             </table>
