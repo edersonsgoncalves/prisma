@@ -18,7 +18,12 @@ from app.auth import require_login, verificar_credenciais, criar_sessao, encerra
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
 # Importação dos routers
-from app.routers import dashboard, extrato, contas, faturas, lancamentos, categorias, projetos, recorrencias, relatorios, notificacoes
+# Importação dos routers
+from app.routers import (
+    dashboard, extrato, contas, faturas, categorias,
+    projetos, recorrencias, relatorios, notificacoes,
+    lancamentos, lancamentos_faturas, lancamentos_transfers
+)
 from app.routers import auth as auth_router
 from app.routers.ofx import router as ofx_router
 from app.routers.pdf_fatura import router as pdf_fatura_router
@@ -52,6 +57,8 @@ app.include_router(extrato.router)
 app.include_router(contas.router)
 app.include_router(faturas.router)
 app.include_router(lancamentos.router)
+app.include_router(lancamentos_faturas.router)
+app.include_router(lancamentos_transfers.router)
 app.include_router(categorias.router)
 app.include_router(projetos.router)
 app.include_router(recorrencias.router)

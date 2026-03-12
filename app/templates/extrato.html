@@ -991,7 +991,7 @@
       const resp = await fetch(`/lancamentos/editar/${opId}`);
       const data = await resp.json();
 
-      if (data.tipo == 0 || data.transf_rel) {
+      if (data.tipo == 0 && data.transf_rel) {
         // === PAGAMENTO FATURA ===
         const form = document.getElementById('formEditarPagFatura');
         form.action = `/lancamentos/editar-pagamento-fatura/${opId}`;
@@ -1002,7 +1002,7 @@
         document.getElementById('edit_pag_fatura_destino').value = data.conta_destino || '';
         _setEfetivado('edit_transf', data.efetivado, data.data_efetivado);
         form.style.display = '';
-      } else if (data.tipo == 4 || data.transf_rel) {
+      } else if (data.tipo == 4 && data.transf_rel) {
         // === TRANSFERÊNCIA ===
         const form = document.getElementById('formEditarTransf');
         form.action = `/lancamentos/editar-transferencia/${opId}`;

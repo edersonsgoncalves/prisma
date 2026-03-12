@@ -39,11 +39,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
 
-try:
-    import mysql.connector
-    from mysql.connector import Error as MySQLError
-except ImportError:
-    sys.exit("❌  Instale: pip install mysql-connector-python")
+from sqlalchemy.orm import Session
+from sqlalchemy import select, and_
+
+from app.database import SessionLocal, engine
+from app.models import Operacao
 
 try:
     from dateutil import parser as dateutil_parser
@@ -334,76 +334,53 @@ class TransacaoMatcher:
 # ===========================================================================
 
 class OperacoesRepository:
-    """Encapsula todas as queries ao banco de dados."""
+    """Encapsula todas as queries ao banco de dados usando SQLAlchemy."""
 
-    def __init__(self, conn):
-        self._conn = conn
+    def __init__(self, db: Session):
+        self._db = db
 
-    def buscar_candidatos(self, ofx: dict, janela_dias: int = 10) -> list[dict]:
+    def buscar_candidatos(self, ofx: dict, janela_dias: int = 10) -> list[Operacao]:
         """
         Busca registros no banco próximos à transação do OFX.
         Filtra por valor exato E data dentro de ±janela_dias.
-        Evita trazer tudo para a memória.
         """
         data_min = ofx["data"] - timedelta(days=janela_dias)
         data_max = ofx["data"] + timedelta(days=janela_dias)
 
-        sql = """
-            SELECT
-                id, descricao, valor, data_lancamento, tipo,
-                ofx_fitid, ofx_memo,
-                operacoes_efetivado, operacoes_data_efetivado
-            FROM operacoes
-            WHERE valor = %s
-              AND data_lancamento BETWEEN %s AND %s
-        """
-        cursor = self._conn.cursor(dictionary=True)
-        cursor.execute(sql, (ofx["valor"], data_min, data_max))
-        rows = cursor.fetchall()
-        cursor.close()
-        return rows
+        return self._db.query(Operacao).filter(
+            Operacao.operacoes_valor == ofx["valor"],
+            Operacao.operacoes_data_lancamento.between(data_min, data_max)
+        ).all()
 
-    def buscar_por_fitid(self, fitid: str) -> Optional[dict]:
-        sql = "SELECT * FROM operacoes WHERE ofx_fitid = %s LIMIT 1"
-        cursor = self._conn.cursor(dictionary=True)
-        cursor.execute(sql, (fitid,))
-        row = cursor.fetchone()
-        cursor.close()
-        return row
+    def buscar_por_fitid(self, fitid: str) -> Optional[Operacao]:
+        return self._db.query(Operacao).filter(Operacao.operacoes_fitid == fitid).first()
 
     def efetivar(self, operacao_id: int, data_efetivado: date, fitid: str, memo: str):
-        sql = """
-            UPDATE operacoes
-               SET operacoes_efetivado       = 1,
-                   operacoes_data_efetivado  = %s,
-                   ofx_fitid                 = %s,
-                   ofx_memo                  = %s
-             WHERE id = %s
-        """
-        cursor = self._conn.cursor()
-        cursor.execute(sql, (data_efetivado, fitid, memo, operacao_id))
-        self._conn.commit()
-        cursor.close()
-        log.info(f"  ✅  Operação ID {operacao_id} efetivada.")
+        op = self._db.query(Operacao).filter(Operacao.operacoes_id == operacao_id).first()
+        if op:
+            op.operacoes_efetivado = 1
+            op.operacoes_data_efetivado = datetime.combine(data_efetivado, datetime.min.time())
+            op.operacoes_fitid = fitid
+            # op.ofx_memo = memo # Se o modelo tiver esse campo, mas Operacao parece não ter
+            self._db.commit()
+            log.info(f"  ✅  Operação ID {operacao_id} efetivada.")
 
     def inserir(self, ofx: dict) -> int:
-        sql = """
-            INSERT INTO operacoes
-                (descricao, valor, data_lancamento, tipo,
-                 ofx_fitid, ofx_memo,
-                 operacoes_efetivado, operacoes_data_efetivado)
-            VALUES (%s, %s, %s, %s, %s, %s, 1, %s)
-        """
-        cursor = self._conn.cursor()
-        cursor.execute(sql, (
-            ofx["memo"], ofx["valor"], ofx["data"], ofx["tipo"],
-            ofx["fitid"], ofx["memo"], ofx["data"],
-        ))
-        self._conn.commit()
-        novo_id = cursor.lastrowid
-        cursor.close()
-        log.info(f"  ➕  Nova operação inserida com ID {novo_id}.")
-        return novo_id
+        nova = Operacao(
+            operacoes_descricao=ofx["memo"],
+            operacoes_valor=ofx["valor"],
+            operacoes_data_lancamento=ofx["data"],
+            operacoes_tipo=1 if ofx["tipo"] == "C" else 3, # Simplificação para C=1, D=3
+            operacoes_fitid=ofx["fitid"],
+            operacoes_efetivado=1,
+            operacoes_data_efetivado=datetime.combine(ofx["data"], datetime.min.time()),
+            operacoes_validacao=1
+        )
+        self._db.add(nova)
+        self._db.commit()
+        self._db.refresh(nova)
+        log.info(f"  ➕  Nova operação inserida com ID {nova.operacoes_id}.")
+        return nova.operacoes_id
 
 
 # ===========================================================================
@@ -419,7 +396,7 @@ class ConfirmacaoUI:
 
     SEP = "─" * 72
 
-    def exibir_comparacao(self, ofx: dict, db: dict, score: int, classificacao: str):
+    def exibir_comparacao(self, ofx: dict, db_op: Operacao, score: int, classificacao: str):
         print(f"\n{self.SEP}")
         label = {
             "DUPLICIDADE": "⚠️  POSSÍVEL DUPLICIDADE",
@@ -434,13 +411,13 @@ class ConfirmacaoUI:
         def linha(campo, v_ofx, v_db):
             print(f"  {campo:<25} {str(v_ofx):<30} {str(v_db)}")
 
-        linha("FITID",         ofx.get("fitid", "-"),    db.get("ofx_fitid", "-"))
-        linha("Data",          ofx["data"],               db["data_lancamento"])
-        linha("Valor",         f"R$ {ofx['valor']:.2f}",  f"R$ {float(db['valor']):.2f}")
-        linha("Tipo",          ofx["tipo"],               db.get("tipo", "-"))
-        linha("Memo/Descr.",   ofx["memo"][:28],          (db.get("ofx_memo") or db.get("descricao", ""))[:28])
-        linha("Efetivado",     "-",                       "Sim" if db.get("operacoes_efetivado") else "Não")
-        linha("ID no banco",   "-",                       db["id"])
+        linha("FITID",         ofx.get("fitid", "-"),    db_op.operacoes_fitid or "-")
+        linha("Data",          ofx["data"],               db_op.operacoes_data_lancamento)
+        linha("Valor",         f"R$ {ofx['valor']:.2f}",  f"R$ {float(db_op.operacoes_valor or 0):.2f}")
+        linha("Tipo",          ofx["tipo"],               "C" if db_op.operacoes_tipo == 1 else "D")
+        linha("Memo/Descr.",   ofx["memo"][:28],          (db_op.operacoes_descricao or "")[:28])
+        linha("Efetivado",     "-",                       "Sim" if db_op.operacoes_efetivado else "Não")
+        linha("ID no banco",   "-",                       db_op.operacoes_id)
         print(self.SEP)
 
     def perguntar(self, opcoes: list[str]) -> str:
@@ -450,26 +427,26 @@ class ConfirmacaoUI:
                 return resp
             print(f"  ❌ Resposta inválida. Opções: {', '.join(opcoes)}")
 
-    def solicitar_confirmacao_match(self, ofx: dict, db: dict, score: int, classificacao: str) -> str:
+    def solicitar_confirmacao_match(self, ofx: dict, db_op: Operacao, score: int, classificacao: str) -> str:
         """
         Retorna:
           'C'  → Confirmar (efetivar este par)
           'I'  → Ignorar / pular
           'N'  → Inserir como novo (ignorar match)
         """
-        self.exibir_comparacao(ofx, db, score, classificacao)
+        self.exibir_comparacao(ofx, db_op, score, classificacao)
         print("  [C] Confirmar match e efetivar")
         print("  [I] Ignorar este lançamento (pular)")
         print("  [N] Inserir como novo registro")
         return self.perguntar(["C", "I", "N"])
 
-    def solicitar_decisao_duplicidade(self, ofx: dict, db: dict) -> str:
+    def solicitar_decisao_duplicidade(self, ofx: dict, db_op: Operacao) -> str:
         """
         Retorna:
           'I'  → Ignorar (já existe)
           'F'  → Forçar re-efetivação
         """
-        self.exibir_comparacao(ofx, db, SCORE_FITID_MATCH, "DUPLICIDADE")
+        self.exibir_comparacao(ofx, db_op, SCORE_FITID_MATCH, "DUPLICIDADE")
         print("  Este lançamento já existe no banco (mesmo FITID).")
         print("  [I] Ignorar (recomendado)")
         print("  [F] Forçar atualização mesmo assim")
@@ -482,62 +459,34 @@ class ConfirmacaoUI:
 
 class OFXImporter:
     """
-    Orquestra o fluxo completo:
+    Orquestra o fluxo completo usando SQLAlchemy:
       parse → match → confirmação → efetivação
     """
 
-    def __init__(self, db_config: dict = None, conta_id: int = None):
-        self._db_config = db_config or DEFAULT_DB_CONFIG
+    def __init__(self, db_session: Session = None, conta_id: int = None):
+        self._db = db_session or SessionLocal()
         self._conta_id = conta_id
         self._parser = OFXParser()
         self._matcher = TransacaoMatcher()
         self._ui = ConfirmacaoUI()
-        self._conn = None
-        self._repo = None
+        self._repo = OperacoesRepository(self._db)
 
-    # ------------------------------------------------------------------
-    # Conexão
-    # ------------------------------------------------------------------
-    def _conectar(self):
-        try:
-            self._conn = mysql.connector.connect(**self._db_config)
-            self._repo = OperacoesRepository(self._conn)
-            log.info("Conectado ao banco de dados.")
-        except MySQLError as e:
-            sys.exit(f"❌  Erro de conexão: {e}")
-
-    def _desconectar(self):
-        if self._conn and self._conn.is_connected():
-            self._conn.close()
-            log.info("Conexão encerrada.")
-
-    # ------------------------------------------------------------------
-    # Ponto de entrada
-    # ------------------------------------------------------------------
     def importar(self, filepath: str):
         log.info(f"Iniciando importação: {filepath}")
-        self._conectar()
-
         try:
             transacoes = self._parser.parse(filepath)
             self._processar_transacoes(transacoes)
         finally:
-            self._desconectar()
+            self._db.close()
 
-    # ------------------------------------------------------------------
-    # Loop de processamento
-    # ------------------------------------------------------------------
     def _processar_transacoes(self, transacoes: list[dict]):
         resumo = {"efetivados": 0, "inseridos": 0, "ignorados": 0, "duplicidades": 0}
-
         total = len(transacoes)
         for idx, ofx in enumerate(transacoes, 1):
             print(f"\n[{idx}/{total}] FITID: {ofx['fitid']}  |  {ofx['data']}  |  R$ {ofx['valor']:.2f}  |  {ofx['tipo']}  |  {ofx['memo'][:40]}")
-
             resultado = self._processar_uma(ofx)
             resumo[resultado] = resumo.get(resultado, 0) + 1
 
-        # Resumo final
         print(f"\n{'═'*72}")
         print(f"  IMPORTAÇÃO CONCLUÍDA")
         print(f"  Efetivados  : {resumo['efetivados']}")
@@ -547,32 +496,39 @@ class OFXImporter:
         print(f"{'═'*72}\n")
 
     def _processar_uma(self, ofx: dict) -> str:
-        """
-        Processa uma transação do OFX.
-        Retorna o resultado: 'efetivados', 'inseridos', 'ignorados', 'duplicidades'.
-        """
-        # 1. Verifica FITID primeiro (duplicidade certa)
         existente = self._repo.buscar_por_fitid(ofx["fitid"])
         if existente:
             return self._tratar_duplicidade(ofx, existente)
 
-        # 2. Busca candidatos por valor + data
         candidatos = self._repo.buscar_candidatos(ofx)
-
         if not candidatos:
             return self._tratar_sem_match(ofx)
 
-        melhor, score = self._matcher.encontrar_melhor_match(ofx, candidatos)
+        # TransacaoMatcher precisa de dicts, mas o repo retorna objetos
+        candidatos_dict = []
+        for c in candidatos:
+            candidatos_dict.append({
+                "id": c.operacoes_id,
+                "descricao": c.operacoes_descricao,
+                "valor": float(c.operacoes_valor or 0),
+                "data_lancamento": c.operacoes_data_lancamento,
+                "tipo": "C" if c.operacoes_tipo == 1 else "D",
+                "ofx_fitid": c.operacoes_fitid,
+                "operacoes_efetivado": c.operacoes_efetivado
+            })
+
+        melhor_dict, score = self._matcher.encontrar_melhor_match(ofx, candidatos_dict)
         classificacao = self._matcher.classificar(score)
 
         if classificacao == "NOVO":
             return self._tratar_sem_match(ofx)
 
-        # 3. Apresenta match ao usuário
-        decisao = self._ui.solicitar_confirmacao_match(ofx, melhor, score, classificacao)
+        # Busca o objeto do melhor match
+        melhor_obj = next(c for c in candidatos if c.operacoes_id == melhor_dict["id"])
+        decisao = self._ui.solicitar_confirmacao_match(ofx, melhor_obj, score, classificacao)
 
         if decisao == "C":
-            self._repo.efetivar(melhor["id"], ofx["data"], ofx["fitid"], ofx["memo"])
+            self._repo.efetivar(melhor_obj.operacoes_id, ofx["data"], ofx["fitid"], ofx["memo"])
             return "efetivados"
         elif decisao == "N":
             self._repo.inserir(ofx)
@@ -581,10 +537,10 @@ class OFXImporter:
             print("  ⏭️  Lançamento ignorado pelo usuário.")
             return "ignorados"
 
-    def _tratar_duplicidade(self, ofx: dict, existente: dict) -> str:
+    def _tratar_duplicidade(self, ofx: dict, existente: Operacao) -> str:
         decisao = self._ui.solicitar_decisao_duplicidade(ofx, existente)
         if decisao == "F":
-            self._repo.efetivar(existente["id"], ofx["data"], ofx["fitid"], ofx["memo"])
+            self._repo.efetivar(existente.operacoes_id, ofx["data"], ofx["fitid"], ofx["memo"])
             return "efetivados"
         print("  ⏭️  Duplicidade ignorada.")
         return "duplicidades"
@@ -600,36 +556,15 @@ class OFXImporter:
         return "ignorados"
 
 
-# ===========================================================================
-# 6. PONTO DE ENTRADA (CLI)
-# ===========================================================================
-
 def main():
     import argparse
-
-    ap = argparse.ArgumentParser(
-        description="Importa arquivo OFX para o banco MySQL/MariaDB"
-    )
+    ap = argparse.ArgumentParser(description="Importa arquivo OFX para o banco usando SQLAlchemy")
     ap.add_argument("arquivo", help="Caminho para o arquivo .ofx")
-    ap.add_argument("--host",     default=DEFAULT_DB_CONFIG["host"])
-    ap.add_argument("--port",     default=DEFAULT_DB_CONFIG["port"], type=int)
-    ap.add_argument("--user",     default=DEFAULT_DB_CONFIG["user"])
-    ap.add_argument("--password", default=DEFAULT_DB_CONFIG["password"])
-    ap.add_argument("--database", default=DEFAULT_DB_CONFIG["database"])
-    ap.add_argument("--conta-id", default=None, type=int,
-                    help="ID da conta no banco (opcional, para filtrar candidatos)")
+    ap.add_argument("--conta-id", default=None, type=int, help="ID da conta no banco")
     args = ap.parse_args()
 
-    db_config = {
-        "host":     args.host,
-        "port":     args.port,
-        "user":     args.user,
-        "password": args.password,
-        "database": args.database,
-        "charset":  "utf8mb4",
-    }
-
-    importer = OFXImporter(db_config=db_config, conta_id=args.conta_id)
+    # SessionLocal já usa os dados do .env via app.database
+    importer = OFXImporter(conta_id=args.conta_id)
     importer.importar(args.arquivo)
 
 

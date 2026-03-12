@@ -13,7 +13,7 @@ from sqlalchemy import extract, func, inspect,select
 from app.database import get_db
 from app.auth import require_login
 from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria, CartaoAdicional
-from app.routers.lancamentos import log_evento
+from app.routers.lancamentos_utils import log_evento, recalcular_total_fatura
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
 router = APIRouter(prefix="/faturas", tags=["faturas"])
@@ -177,6 +177,7 @@ async def detalhe_fatura(
         "total_conciliado": Decimal("0.00"),
         "total_nao_conciliado": Decimal("0.00"),
         "total_fatura": Decimal("0.00"),
+        "total_creditos_fatura": Decimal ("0.00"),
     }
     
     if fatura_anterior:
@@ -188,6 +189,14 @@ async def detalhe_fatura(
     stats["total_fatura"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
         Operacao.operacoes_fatura == fatura_id,
         Operacao.operacoes_valor < 0,
+        Operacao.operacoes_tipo !=0,
+        Operacao.operacoes_validacao == 1
+    ).scalar() or Decimal("0.00")
+    
+    # Calcula valor de créditos que possam exitir
+    stats["total_creditos_fatura"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
+        Operacao.operacoes_fatura == fatura_id,
+        Operacao.operacoes_valor > 0,
         Operacao.operacoes_tipo !=0,
         Operacao.operacoes_validacao == 1
     ).scalar() or Decimal("0.00")
@@ -203,7 +212,7 @@ async def detalhe_fatura(
     # Soma de despesas (valores negativos)
     stats["despesas"] = db.query(func.sum(Operacao.operacoes_valor)).filter(
         Operacao.operacoes_fatura == fatura_id,
-        Operacao.operacoes_valor < 0,
+        Operacao.operacoes_tipo != 0,
         Operacao.operacoes_validacao == 1
     ).scalar() or Decimal("0.00")
 
@@ -337,11 +346,11 @@ async def fechar_fatura(
     else:
         fatura_id_final = existe.fatura_id 
 
-    cartao_adicional = db.query(CartaoAdicional).filter(
-        CartaoAdicional.conta_id == fatura.conta_id
+    cartao_nome  = db.query(ContaBancaria).filter_by(
+        ContaBancaria.conta_id == fatura_id_final.conta_id
     ).first()
 
-    cartao_adicional_nome = cartao_adicional.apelido if cartao_adicional else "Sem Nome"
+    cartao_nome_tratado = cartao_nome.nome_conta if cartao_nome else "Sem Nome"
 
 
     # Gerar lançamento de pagamento para próxima fatura
@@ -352,7 +361,7 @@ async def fechar_fatura(
         operacoes_validacao=1,
         operacoes_efetivado=0,
         operacoes_conta=fatura.cartao.contas_prev_debito,
-        operacoes_descricao=f"Pagamento fatura | {cartao_adicional_nome} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
+        operacoes_descricao=f"Pagamento fatura | {cartao_nome_tratado} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
     )
     db.add(op_pagamento_saida)
     db.flush()
@@ -365,7 +374,7 @@ async def fechar_fatura(
         operacoes_efetivado=0,
         operacoes_fatura=fatura_id_final,
         operacoes_conta=fatura.conta_id,
-        operacoes_descricao=f"Pagamento fatura | {cartao_adicional_nome} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
+        operacoes_descricao=f"Pagamento fatura | {cartao_nome_tratado} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
     )
     db.add(op_pagamento_entrada)
     db.flush()
@@ -380,7 +389,7 @@ async def fechar_fatura(
     
     db.commit()
 
-    return RedirectResponse(url=f"/faturas/{nova_fatura.fatura_id}", status_code=303)
+    return RedirectResponse(url=f"/faturas/{fatura_id_final}", status_code=303)
 
 
 @router.post("/pagar")
@@ -476,32 +485,78 @@ async def converter_em_transferencia(
     if not op or op.operacoes_transf_rel:
         return RedirectResponse(url="/faturas", status_code=303)
 
-    # 1. Atualiza a operação original para ser o lado Saída da Transferência (tipo 4)
-    op.operacoes_tipo = "4"
-    
-    # 2. Cria a operação correspondente (Entrada) na conta de destino
     import uuid
-    grupo = f"TRF-{uuid.uuid4().hex[:10]}"
-    op.operacoes_grupo_id = grupo
 
-    nova_op = Operacao(
-        operacoes_data_lancamento=op.operacoes_data_lancamento,
-        operacoes_descricao=op.operacoes_descricao,
-        operacoes_conta=conta_destino_id,
-        operacoes_valor=abs(op.operacoes_valor), # Entrada (valor positivo)
-        operacoes_tipo="4", # Transferência
-        operacoes_efetivado=1,
-        operacoes_data_efetivado=datetime.now(),
-        operacoes_validacao=1,
-        operacoes_transf_rel=op.operacoes_id,
-        operacoes_grupo_id=grupo
+    # Determina se a operação faz parte de uma série (grupo_id preenchido)
+    grupo_id_original = op.operacoes_grupo_id
+
+    if grupo_id_original:
+        # Busca todas as parcelas do grupo que ainda não foram convertidas
+        parcelas = (
+            db.query(Operacao)
+            .filter(
+                Operacao.operacoes_grupo_id == grupo_id_original,
+                Operacao.operacoes_transf_rel == None,
+                Operacao.operacoes_validacao == 1,
+            )
+            .order_by(Operacao.operacoes_data_lancamento)
+            .all()
+        )
+    else:
+        # Lançamento avulso — converte apenas este
+        parcelas = [op]
+
+    # Novo grupo para os espelhos (lado destino da transferência)
+    grupo_espelhos = f"TRF-CONV-{uuid.uuid4().hex[:8]}"
+    faturas_recalc = set()
+
+    for parcela in parcelas:
+        # Determina o valor correto de saída/entrada
+        valor_abs = abs(float(parcela.operacoes_valor))
+        if int(parcela.operacoes_tipo) == 1:  # era receita → entrada da transf
+            parcela.operacoes_valor = valor_abs
+            valor_espelho = -valor_abs
+        else:  # era despesa → saída da transf
+            parcela.operacoes_valor = -valor_abs
+            valor_espelho = valor_abs
+
+        parcela.operacoes_tipo = "4"
+        parcela.operacoes_categoria = None
+        # Preserva grupo_id original (série de origem) ou atribui o novo grupo
+        if not parcela.operacoes_grupo_id:
+            parcela.operacoes_grupo_id = grupo_espelhos
+
+        # Cria o espelho na conta destino
+        espelho = Operacao(
+            operacoes_data_lancamento=parcela.operacoes_data_lancamento,
+            operacoes_descricao=parcela.operacoes_descricao,
+            operacoes_conta=conta_destino_id,
+            operacoes_valor=valor_espelho,
+            operacoes_tipo="4",
+            operacoes_parcela=parcela.operacoes_parcela,
+            operacoes_efetivado=parcela.operacoes_efetivado,
+            operacoes_data_efetivado=parcela.operacoes_data_efetivado,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_espelhos,
+        )
+        db.add(espelho)
+        db.flush()
+
+        parcela.operacoes_transf_rel = espelho.operacoes_id
+        espelho.operacoes_transf_rel = parcela.operacoes_id
+
+        if parcela.operacoes_fatura:
+            faturas_recalc.add(parcela.operacoes_fatura)
+
+    log_evento(
+        db, "UPDATE", "OPERACAO", op.operacoes_id,
+        f"Convertido{'a série' if grupo_id_original else ''} para transferência "
+        f"({len(parcelas)} lançamento(s) → conta {conta_destino_id})",
+        sessao.get("id"),
     )
-    db.add(nova_op)
-    db.flush()
-    
-    op.operacoes_transf_rel = nova_op.operacoes_id
-    
-    log_evento(db, "INSERT", "TRANSFERENCIA", nova_op.operacoes_id, f"Convertido de despesa#{op.operacoes_id} para transferência", sessao.get("id"))
     db.commit()
-    
+
+    for f_id in faturas_recalc:
+        recalcular_total_fatura(db, f_id)
+
     return RedirectResponse(url=f"/faturas/{op.operacoes_fatura}", status_code=303)

@@ -363,6 +363,7 @@
     cursor: pointer;
     font-size: 14px;
     color: #fff;
+    padding-right: 30px;
   }
   .radio-modern input {
     appearance: none;
@@ -504,8 +505,12 @@
           <td>{{ formata_moeda(stats.total_fatura) }}</td>
         </tr>
         <tr>
+          <td class="label-muted">Créditos</td>
+          <td>{{formata_moeda(stats.total_creditos_fatura)}}</td>
+        </tr>
+        <tr>
           <td class="label-muted">Valor a pagar</td>
-          <td style="color: var(--danger);">{{ formata_moeda(stats.total_fatura + (stats.saldo_anterior + stats.total_pago)) }}</td>
+          <td style="color: var(--danger);">{{ formata_moeda(stats.total_fatura + (stats.saldo_anterior + stats.total_pago + stats.total_creditos_fatura)) }}</td>
         </tr>
       </table>
 
@@ -704,10 +709,15 @@
                         Converter Transf
                       </button>
                       {% endif %}
-
+                      
+                      {% if op.operacoes_parcela %}
+                        <button type="button" onclick="abrirModalDeletaParcelados('{{ op.operacoes_id }}')">Excluir</button>
+                      
+                      {% else %}
                       <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:block;">
                         <button type="submit" class="text-danger">Excluir</button>
                       </form>
+                      {% endif %}
                     </div>
                   </div>
                 </td>
@@ -767,9 +777,11 @@
       <h2 class="modal-title">Novo Lançamento</h2>
       <button class="modal-close" onclick="closeModal('modalNovoLancamentoFatura')">&times;</button>
     </div>
-    <form action="/lancamentos/inserir" method="post">
+    <form action="/lancamentos/fatura/inserir/lancamento" method="post" id="formNovoLancamento">
       <input type="hidden" name="conta" value="{{ fatura.conta_id }}">
-      
+      <input type="hidden" name="vincular_fatura" value="on"> 
+      <input type="hidden" name="fatura_id_origem" value="{{ fatura.fatura_id }}">
+
       <div class="form-group">
         <label class="form-label">Tipo de Lançamento</label>
         <div class="flex gap-6 mb-4">
@@ -792,7 +804,7 @@
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Valor</label>
-          <input type="text" name="valor" id="novo_valor" class="form-control" onkeyup="formatCurrency(this)" placeholder="0,00" required>
+          <input type="text" name="valor" id="novo_valor" class="form-control" onkeyup="formatCurrency(this); handleValueChange()" placeholder="0,00" required>
         </div>
         <div class="form-group">
           <label class="form-label">Data</label>
@@ -822,7 +834,6 @@
         </div>
       </div>
 
-      <!-- SEÇÃO REPETIÇÃO (NOVA UI) -->
       <div class="repetition-selector">
         <div class="repetition-header">
           <i class="fas fa-redo"></i>
@@ -847,7 +858,7 @@
         <div id="repetition_fields_novo" style="display: none;">
           <div class="form-grid-modern mb-4">
             <div class="form-group">
-              <label class="form-label-modern">Repetição</label>
+              <label class="form-label-modern">Frequência</label>
               <select name="frequencia" class="form-control form-control-sm">
                 <option value="mensal">mensal</option>
                 <option value="semanal">semanal</option>
@@ -855,42 +866,26 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label-modern">Repete-se a cada n meses *</label>
+              <label class="form-label-modern">Intervalo (n meses)</label>
               <input type="number" name="intervalo" class="form-control form-control-sm" value="1" min="1">
             </div>
           </div>
 
-          <div id="parcela_fields_novo" class="form-grid-modern mb-4">
+          <div id="parcela_fields_novo" class="form-grid-modern mb-4" style="display: none;">
             <div class="form-group">
-              <label class="form-label-modern">Número de parcelas *</label>
-              <input type="number" name="num_parcelas" id="novo_num_parcelas" class="form-control form-control-sm" value="2" min="2" onchange="calcInstallmentValue('novo')">
+              <label class="form-label-modern">Total de parcelas</label>
+              <input type="number" name="num_parcelas" id="novo_num_parcelas" class="form-control form-control-sm" value="2" min="2" oninput="handleValueChange('novo')">
             </div>
             <div class="form-group">
-              <label class="form-label-modern">Parcela inicial *</label>
-              <input type="number" name="parcela_inicial" class="form-control form-control-sm" value="1" min="1">
+              <label class="form-label-modern">Parcela atual</label>
+              <input type="number" name="parcela_inicial" id="novo_parcela_inicial" class="form-control form-control-sm" value="1" min="1" oninput="handleValueChange('novo')">
             </div>
           </div>
-
-          <div class="flex justify-between items-end">
-            <div class="form-group mb-0">
-              <label class="form-label-modern">Valor total (R$) *</label>
-              <input type="text" name="valor_referencia" id="novo_valor_referencia" class="form-control form-control-sm" onkeyup="formatCurrency(this); calcInstallmentValue('novo')" placeholder="0,00">
-            </div>
-            <label class="flex items-center gap-2 cursor-pointer mb-2">
-              <input type="checkbox" name="is_valor_parcela" id="novo_is_valor_parcela" onchange="calcInstallmentValue('novo')">
-              <span style="font-size: 12px; color: rgba(255,255,255,0.7);">Valor da parcela</span>
-            </label>
-          </div>
+  
+          <div id="preview_parcela_novo" style="font-weight: 500; font-size: 12px; color: #10b981; margin-bottom: 15px; min-height: 1.2em;"></div>
         </div>
       </div>
-
-      <!-- Vincular à Fatura -->
-      <div class="form-group" style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; margin-top: 20px;">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" name="vincular_fatura" value="on" checked>
-          <span style="font-size: 13px;">Vincular a esta fatura ({{mes_venc_pt}})</span>
-        </label>
-      </div>
+      <p>&nbsp;</p>
 
       <div class="flex justify-end mt-6">
         <button type="submit" class="btn btn-primary">Adicionar Lançamento</button>
@@ -1030,6 +1025,33 @@
     </form>
   </div>
 </div>
+
+<!-- MODAL: DELETAR LANÇAMENTOS PARCELADOS -->
+<div class="modal-backdrop" id="modalDeletaParcelados">
+  <div class="modal" style="max-width: 400px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Deletar Lançamentos Parcelados</h2>
+      <button class="modal-close" onclick="closeModal('modalDeletaParcelados')">&times;</button>
+    </div>
+    <span class="modal-body">
+      <p>Este lançamento faz parte de uma série..<br/>Você deseja deletar somente ele ou todos os lançamentos futuros?</p><br/>
+      <span style="display: flex; gap: 10px; justify-content: center;">
+        <form action="/lancamentos/deletar/serie" method="post" onsubmit="return validarFormOnly()">
+          <input type="hidden" name="operacao_id" id="deleta_parcelados_op_id_only">
+          <input type="hidden" name="modo" value="only">
+          <button type="submit" class="btn btn-warning btn-sm">Somente este</button>
+        </form>
+        
+        <form action="/lancamentos/deletar/serie" method="post" onsubmit="return validarFormAll()">
+          <input type="hidden" name="operacao_id" id="deleta_parcelados_op_id_all">
+          <input type="hidden" name="modo" value="all">
+          <button type="submit" class="btn btn-danger btn-sm">Este e futuros</button>
+        </form>
+      </span>
+    </span>
+  </div>
+</div>
+
 
 <!-- MODAL EDITAR LANÇAMENTO (Reutilizado do Extrato) -->
 <div class="modal-backdrop" id="modalEditarLancamento">
@@ -1265,15 +1287,19 @@
 </div>
 
 <script>
+
+/* --- FUNÇÕES GERAIS DE INTERFACE --- */
 function openModal(id) {
   document.getElementById(id).style.display = 'flex';
-  // Fecha o dropdown ao abrir um modal
   const dropdown = document.getElementById('dropdownNovo');
   if (dropdown) dropdown.classList.remove('show');
 }
+
+
 function closeModal(id) {
   document.getElementById(id).style.display = 'none';
 }
+
 
 function toggleDropdownNovo(e) {
   e.stopPropagation();
@@ -1281,116 +1307,137 @@ function toggleDropdownNovo(e) {
   dropdown.classList.toggle('show');
 }
 
-function filterCategoriasNovo(tipo) {
-  const select = document.getElementById('novo_categoria');
-  const options = select.querySelectorAll('option');
-  options.forEach(opt => {
-    if (!opt.value || opt.value === "-1") return;
-    const classe = opt.dataset.classe;
-    if (classe == tipo || classe == "0" || !classe) {
-      opt.style.display = '';
-    } else {
-      opt.style.display = 'none';
-    }
-  });
-  // Reset se a categoria atual sumiu
-  const currentVal = select.value;
-  if (currentVal && currentVal !== "-1") {
-    const activeOpt = select.querySelector(`option[value="${currentVal}"]`);
-    if (activeOpt && activeOpt.style.display === 'none') {
-      select.value = '-1';
-    }
-  }
-}
 
+/* --- LÓGICA DE REPETIÇÃO E PARCELAMENTO (NOVA ESPECIFICAÇÃO) --- */
 function updateRepetitionUI(prefix) {
-  const modal = prefix === 'novo' ? 'modalNovoLancamentoFatura' : 'modalNovaTransferenciaFatura';
-  const modoRadio = document.querySelector(`#${modal} input[name^="modo_repeticao_modern"]:checked`);
+  const modalId = prefix === 'novo' ? 'modalNovoLancamentoFatura' : 'modalNovaTransferenciaFatura';
+  const modal = document.getElementById(modalId);
+  const modoRadio = modal.querySelector('input[name="modo_repeticao_modern"]:checked');
+  
   if (!modoRadio) return;
   const modo = modoRadio.value;
   
   const fieldsDiv = document.getElementById(`repetition_fields_${prefix}`);
   const parcelaFields = document.getElementById(`parcela_fields_${prefix}`);
+  const parcelaOptions = document.getElementById(`parcela_options_${prefix}`);
   
   if (modo === 'unica') {
     fieldsDiv.style.display = 'none';
   } else {
     fieldsDiv.style.display = 'block';
-    parcelaFields.style.display = (modo === 'parcelada') ? 'grid' : 'none';
+    // Se for parcelada, mostra campos de Qtd e Parcela Inicial
+    if (modo === 'parcelada') {
+      parcelaFields.style.display = 'grid';
+      if (parcelaOptions) parcelaOptions.style.display = 'block';
+    } else {
+      // Se for Fixa, esconde os campos de parcela
+      parcelaFields.style.display = 'none';
+      if (parcelaOptions) parcelaOptions.style.display = 'none';
+    }
   }
+  handleValueChange(prefix);
 }
 
-function calcInstallmentValue(prefix) {
-  const valRefEl = document.getElementById(`${prefix}_valor_referencia`);
-  const isParcEl = document.getElementById(`${prefix}_is_valor_parcela`);
-  const numParcEl = document.getElementById(`${prefix}_num_parcelas`);
-  const finalValEl = document.getElementById(`${prefix}_valor`);
-  
-  if (!valRefEl || !finalValEl) return;
-  
-  let valRaw = valRefEl.value.replace(/\D/g,'');
-  if (!valRaw) return;
-  let val = parseFloat(valRaw) / 100;
-  
-  let finalVal = val;
-  if (!isParcEl.checked) {
-    // É valor total, divide pelo numero de parcelas
-    const num = parseInt(numParcEl.value) || 1;
-    finalVal = val / num;
-  }
-  
-  // Formata o valor final para o campo principal
-  let v = finalVal.toFixed(2).replace(".",",");
-  v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
-  v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
-  finalValEl.value = v;
+
+function handleValueChange(prefix) {
+    const modalId = prefix === 'novo' ? 'modalNovoLancamentoFatura' : 'modalNovaTransferenciaFatura';
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+
+    const modoRadio = modal.querySelector('input[name="modo_repeticao_modern"]:checked');
+    const preview = document.getElementById(`preview_parcela_${prefix}`);
+    
+    if (!modoRadio || modoRadio.value !== 'parcelada') {
+        if (preview) preview.innerText = "";
+        return;
+    }
+
+    const valorInput = document.getElementById(`${prefix}_valor`);
+    const numTotalInput = document.getElementById(`${prefix}_num_parcelas`);
+
+    if (!valorInput || !preview) return;
+
+    // Converte "1.250,50" para 1250.50
+    let valRaw = valorInput.value.replace(/\./g, '').replace(',', '.');
+    let valorParcela = parseFloat(valRaw) || 0;
+    let numTotal = parseInt(numTotalInput.value) || 0;
+
+    if (valorParcela > 0 && numTotal > 0) {
+        let valorCompraTotal = valorParcela * numTotal;
+        preview.innerHTML = `<i class="fas fa-info-circle"></i> Valor total da compra: R$ ${valorCompraTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+    } else {
+        preview.innerText = "";
+    }
 }
+
 
 function formatCurrency(i) {
-  let v = i.value.replace(/\D/g,'');
-  v = (v/100).toFixed(2).replace(".",",");
-  v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
-  v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
-  i.value = v;
+    let v = i.value.replace(/\D/g,'');
+    v = (v/100).toFixed(2).replace(".",",");
+    v = v.replace(/(\d)(\d{3})(\d{3}),/g, "$1.$2.$3,");
+    v = v.replace(/(\d)(\d{3}),/g, "$1.$2,");
+    i.value = v;
+    
+    // Pega o prefixo (ex: 'novo' de 'novo_valor') e atualiza o preview
+    const prefix = i.id.split('_')[0];
+    handleValueChange(prefix);
 }
 
-function toggleRepetirFatura() {
-  const isRepetir = document.getElementById('checkRepetirFatura').checked;
-  document.getElementById('divRepeticaoFatura').style.display = isRepetir ? "" : "none";
+
+/* --- FILTROS E CATEGORIAS --- */
+function _filterCategorias(selectId, tipo) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  select.querySelectorAll('option').forEach(opt => {
+    if (!opt.value || opt.value === "-1") return;
+    const classe = opt.dataset.classe;
+    opt.style.display = (classe == tipo || classe == "0" || !classe) ? '' : 'none';
+  });
+  // Se a categoria selecionada ficou oculta, reseta
+  const active = select.querySelector(`option[value="${select.value}"]`);
+  if (active && active.style.display === 'none') select.value = '';
 }
 
-function toggleModoRepeticaoFatura() {
-  const modo = document.querySelector('#modalNovoLancamentoFatura input[name="modo_repeticao"]:checked').value;
-  document.getElementById('divParceladoFatura').style.display = (modo === 'parcelado') ? "" : "none";
-  document.getElementById('divRecorrenteFatura').style.display = (modo === 'recorrente') ? "" : "none";
+function filterCategoriasNovo(tipo) {
+  _filterCategorias('novo_categoria', tipo);
 }
 
-// Fecha modal ou kebab ou dropdown ao clicar fora
+function filterCategoriasByTipo() {
+  const checked = document.querySelector('input[name="tipo"]:checked');
+  if (checked) _filterCategorias('edit_cat', checked.value);
+}
+
+
+/* --- CLIQUE FORA E MENUS (KEBAB) --- */
+function togglePortadorGroup(header, groupClass) {
+  header.classList.toggle('collapsed');
+  document.querySelectorAll('.' + groupClass).forEach(row => {
+    row.style.display = header.classList.contains('collapsed') ? 'none' : 'table-row';
+  });
+}
+
+
 window.onclick = function(event) {
   if (event.target.classList.contains('modal-backdrop')) {
-    const modalId = event.target.id;
-    closeModal(modalId);
+    closeModal(event.target.id);
   }
-  
   if (!event.target.closest('.dropdown-kebab')) {
     document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
   }
-
   if (!event.target.closest('.dropdown-novo')) {
     const dropdown = document.getElementById('dropdownNovo');
     if (dropdown) dropdown.classList.remove('show');
   }
 }
 
+
 function toggleKebab(e, btn) {
   e.stopPropagation();
   const content = btn.nextElementSibling;
   const isShown = content.classList.contains('show');
-  
   document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
   if (!isShown) content.classList.add('show');
 
-  // Fix para não sair da tela (inverter se estiver no final)
   const rect = content.getBoundingClientRect();
   if (rect.bottom > window.innerHeight) {
     content.style.top = 'auto';
@@ -1401,53 +1448,35 @@ function toggleKebab(e, btn) {
   }
 }
 
-function togglePortadorGroup(header, groupClass) {
-  header.classList.toggle('collapsed');
-  document.querySelectorAll('.' + groupClass).forEach(row => {
-    row.style.display = header.classList.contains('collapsed') ? 'none' : 'table-row';
-  });
-}
 
+/* --- EDIÇÃO E DUPLICAÇÃO --- */
 async function openEditOpModal(btn) {
   const d = btn.dataset;
   const opId = d.id;
-
   document.getElementById('editModalTitle').innerText = 'Editar Lançamento';
   document.getElementById('editModalLoading').style.display = 'flex';
   document.getElementById('formEditarOpRD').style.display = 'none';
-
   openModal('modalEditarLancamento');
 
   try {
     const resp = await fetch(`/lancamentos/editar/${opId}`);
     const data = await resp.json();
-
     fillEditForm(data, `/lancamentos/editar/${opId}`);
-    
-    // Ajuste específico para edição (ID já está na URL da action)
     document.getElementById('edit_escopo_section_rd').style.display = (data.parcela || data.recorrencia) ? 'block' : 'none';
-    
     document.getElementById('formEditarOpRD').style.display = 'block';
   } catch (e) {
-    console.error('Erro ao carregar lançamento:', e);
-    const form = document.getElementById('formEditarOpRD');
-    if (form) form.style.display = 'block';
+    console.error('Erro ao carregar:', e);
   } finally {
-    const loader = document.getElementById('editModalLoading');
-    if (loader) loader.style.display = 'none';
+    document.getElementById('editModalLoading').style.display = 'none';
   }
 }
+
 
 function fillEditForm(data, actionUrl) {
   const form = document.getElementById('formEditarOpRD');
   if (!form) return;
-
   form.action = actionUrl;
-
-  const setVal = (id, val) => {
-    const el = document.getElementById(id);
-    if (el) el.value = val || '';
-  };
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
 
   setVal('edit_desc', data.descricao);
   setVal('edit_data', data.data);
@@ -1464,47 +1493,37 @@ function fillEditForm(data, actionUrl) {
   const radioTransf = document.getElementById('edit_tipo_transf');
   const radioDespesa = document.getElementById('edit_tipo_despesa');
 
-  // Reset groups
-  const catGroup = document.getElementById('edit_cat_group');
-  const destGroup = document.getElementById('edit_conta_destino_group');
-  const tipoGroup = document.getElementById('edit_tipo_group');
-
   if (isTransf) {
     if (radioTransf) radioTransf.checked = true;
-    if (catGroup) catGroup.style.display = 'none';
-    if (destGroup) destGroup.style.display = 'block';
-    if (tipoGroup) tipoGroup.style.display = 'none';
-    
-    // Se estiver editando, troca a URL para o endpoint de transferência
-    if (actionUrl.includes('/editar/')) {
-      const opId = actionUrl.split('/').pop();
-      form.action = `/lancamentos/editar-transferencia/${opId}`;
-    }
-    
+    document.getElementById('edit_cat_group').style.display = 'none';
+    document.getElementById('edit_conta_destino_group').style.display = 'block';
+    document.getElementById('edit_tipo_group').style.display = 'none';
     setVal('edit_conta_destino', data.conta_destino);
   } else {
     if (data.tipo == 1 && radioReceita) radioReceita.checked = true;
     else if (radioDespesa) radioDespesa.checked = true;
-    
-    if (catGroup) catGroup.style.display = 'block';
-    if (destGroup) destGroup.style.display = 'none';
-    if (tipoGroup) tipoGroup.style.display = 'block';
-    
+    document.getElementById('edit_cat_group').style.display = 'block';
+    document.getElementById('edit_conta_destino_group').style.display = 'none';
+    document.getElementById('edit_tipo_group').style.display = 'block';
     setVal('edit_cat', data.categoria);
-    filterCategoriasByTipo(); // Agora filtra apenas R/D
-  }
-
-  // Parcelamento/Escopo
-  const parcelasContainer = document.getElementById('edit_parcelas_container');
-  const inputParcelaTotal = document.getElementById('edit_parcela_total');
-  
-  if (data.parcela && String(data.parcela).includes('.')) {
-    if (parcelasContainer) parcelasContainer.style.display = 'block';
-    if (inputParcelaTotal) inputParcelaTotal.value = parseInt(data.parcela.split('.')[1]);
-  } else if (parcelasContainer) {
-    parcelasContainer.style.display = 'none';
+    filterCategoriasByTipo();
   }
 }
+
+
+/* --- EVENT LISTENERS DE INICIALIZAÇÃO --- */
+document.addEventListener('DOMContentLoaded', function() {
+    // Adiciona ouvintes para os campos de parcela para atualizar o preview em tempo real
+    const inputsParaPreview = ['novo_num_parcelas', 'novo_parcela_inicial', 'novo_is_valor_parcela'];
+    inputsParaPreview.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => handleValueChange('novo'));
+            el.addEventListener('change', () => handleValueChange('novo'));
+        }
+    });
+});
+
 
 async function openDuplicateModal(btn) {
   const opId = btn.dataset.id;
@@ -1536,50 +1555,40 @@ async function openDuplicateModal(btn) {
   }
 }
 
-function filterCategoriasByTipo() {
-  const modal = document.getElementById('modalEditarLancamento');
-  const checkedTipo = modal.querySelector('input[name="tipo"]:checked');
-  const tipo = checkedTipo ? checkedTipo.value : "3";
-  const select = document.getElementById('edit_cat');
-  const options = select.querySelectorAll('option');
+
+function setConciliadoFilter(val, btn) {
+  currentConciliadoFilter = val;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  filterTable();
+}
+
+
+function toggleSelectAll(cb) {
+  const checkboxes = document.querySelectorAll('.row-checkbox');
+  checkboxes.forEach(c => c.checked = cb.checked);
+  toggleRowSelection();
+}
+
+
+function toggleRowSelection() {
+  const selected = document.querySelectorAll('.row-checkbox:checked');
+  const bar = document.getElementById('bulkActionsBar');
+  const count = document.getElementById('selectedCount');
   
-  const catGroup = document.getElementById('edit_cat_group');
-  const destGroup = document.getElementById('edit_conta_destino_group');
-  const form = document.getElementById('formEditarOpRD');
-  const isEditing = form.action.includes('/editar');
-
-  const tipoGroup = document.getElementById('edit_tipo_group');
-
-  if (tipo === "4") {
-    tipoGroup.style.display = 'none'; 
-  } else {
-    catGroup.style.display = 'block';
-    destGroup.style.display = 'none';
-    tipoGroup.style.display = 'block'; 
-    if (isEditing) {
-      const opId = form.action.split('/').pop();
-      form.action = `/lancamentos/editar/${opId}`;
-    }
+  if (selected.length > 0) {
+    bar.classList.add('active');
+    count.innerText = selected.length;
     
-    options.forEach(opt => {
-      if (!opt.value) return; 
-      const classe = opt.dataset.classe;
-      if (classe === tipo) {
-        opt.style.display = '';
-      } else {
-        opt.style.display = 'none';
-      }
-    });
-
-    const currentVal = select.value;
-    if (currentVal) {
-      const activeOpt = select.querySelector(`option[value="${currentVal}"]`);
-      if (activeOpt && activeOpt.style.display === 'none') {
-        select.value = '';
-      }
-    }
+    // Lógica para esconder Categoria se houver transferência (tipo 4)
+    const hasTransfer = Array.from(selected).some(c => c.dataset.tipo == "4");
+    document.getElementById('bulkCatGroup').style.display = hasTransfer ? 'none' : 'flex';
+  } else {
+    bar.classList.remove('active');
+    document.getElementById('selectAllFatura').checked = false;
   }
 }
+
 
 function abrirModalMoverFatura(opId, faturaId) {
   document.getElementById('mover_fatura_op_id').value = opId;
@@ -1591,6 +1600,42 @@ function abrirModalMoverFatura(opId, faturaId) {
 function abrirModalConverterTransf(opId, valor) {
   document.getElementById('conv_transf_op_id').value = opId;
   openModal('modalConverterTransf');
+}
+
+
+function validarFormOnly() {
+  const id = document.getElementById('deleta_parcelados_op_id_only').value;
+  console.log('Enviando only com ID:', id);
+  if (!id) {
+    alert('Erro: ID não encontrado');
+    return false;
+  }
+  return true;
+}
+
+function validarFormAll() {
+  const id = document.getElementById('deleta_parcelados_op_id_all').value;
+  console.log('Enviando all com ID:', id);
+  if (!id) {
+    alert('Erro: ID não encontrado');
+    return false;
+  }
+  return true;
+}
+
+
+function abrirModalDeletaParcelados(operacaoId) {
+  console.log('ID recebido:', operacaoId); // VERIFIQUE ISSO NO CONSOLE
+  console.log('Tipo do ID:', typeof operacaoId); // VERIFIQUE O TIPO
+  
+  document.getElementById('deleta_parcelados_op_id_only').value = operacaoId;
+  document.getElementById('deleta_parcelados_op_id_all').value = operacaoId;
+  
+  // Verifique se os inputs foram preenchidos
+  console.log('Input only:', document.getElementById('deleta_parcelados_op_id_only').value);
+  console.log('Input all:', document.getElementById('deleta_parcelados_op_id_all').value);
+  
+  openModal('modalDeletaParcelados');
 }
 
 let currentConciliadoFilter = 'all';
@@ -1612,38 +1657,6 @@ function filterTable() {
       row.style.display = 'none';
     }
   });
-}
-
-function setConciliadoFilter(val, btn) {
-  currentConciliadoFilter = val;
-  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  filterTable();
-}
-
-
-function toggleSelectAll(cb) {
-  const checkboxes = document.querySelectorAll('.row-checkbox');
-  checkboxes.forEach(c => c.checked = cb.checked);
-  toggleRowSelection();
-}
-
-function toggleRowSelection() {
-  const selected = document.querySelectorAll('.row-checkbox:checked');
-  const bar = document.getElementById('bulkActionsBar');
-  const count = document.getElementById('selectedCount');
-  
-  if (selected.length > 0) {
-    bar.classList.add('active');
-    count.innerText = selected.length;
-    
-    // Lógica para esconder Categoria se houver transferência (tipo 4)
-    const hasTransfer = Array.from(selected).some(c => c.dataset.tipo == "4");
-    document.getElementById('bulkCatGroup').style.display = hasTransfer ? 'none' : 'flex';
-  } else {
-    bar.classList.remove('active');
-    document.getElementById('selectAllFatura').checked = false;
-  }
 }
 
 async function bulkDelete() {
