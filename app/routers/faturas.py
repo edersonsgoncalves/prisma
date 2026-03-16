@@ -346,8 +346,8 @@ async def fechar_fatura(
     else:
         fatura_id_final = existe.fatura_id 
 
-    cartao_nome  = db.query(ContaBancaria).filter_by(
-        ContaBancaria.conta_id == fatura_id_final.conta_id
+    cartao_nome = db.query(ContaBancaria).filter(
+        ContaBancaria.conta_id == fatura.conta_id
     ).first()
 
     cartao_nome_tratado = cartao_nome.nome_conta if cartao_nome else "Sem Nome"

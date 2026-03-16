@@ -59,19 +59,101 @@
   input:checked ~ .label-sim { color: var(--success); }
   input:not(:checked) ~ .label-nao { color: white; }
 
-  /* Kebab Fix no Extrato */
-  .table-wrapper {
-    overflow: visible !important;
+  /* Period Navigation & Month Picker */
+  .period-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 30px;
+    padding: 6px 12px;
+    min-width: 200px;
+    position: relative;
+    user-select: none;
   }
-  /* Desabilita o hover automático do main.css */
-  .dropdown-kebab:hover .dropdown-content,
-  .dropdown-kebab:focus-within .dropdown-content {
-    display: none;
+  .month-display {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    transition: all 0.2s ease;
   }
-  /* Exibe apenas via classe .show (controlado por JS) */
-  .dropdown-kebab .dropdown-content.show {
-    display: flex !important;
-    flex-direction: column;
+  .month-display:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--primary);
+  }
+  
+  .month-picker-popup {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    padding: 16px;
+    z-index: 1000;
+    width: 280px;
+    visibility: hidden;
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .month-picker-popup.show {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .picker-year {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .months-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .month-btn {
+    background: transparent;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px;
+    color: #ccc;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .month-btn:hover {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+    color: white;
+  }
+  .month-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+    font-weight: 700;
+  }
+  
+  @media (max-width: 768px) {
+    .filter-row {
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+    .period-nav {
+      width: 100%;
+      margin-top: 10px;
+    }
   }
 </style>
 
@@ -167,33 +249,67 @@
       </select>
     </div>
 
+    <!-- Tipo Lançamento -->
+    <div class="form-group mb-0">
+      <label class="form-label" style="font-size: 11px;">Tipo Lançamento</label>
+      <select name="tipo_lancamento" class="form-control form-control-sm" onchange="this.form.submit()">
+        <option value="">Todos os Lançamentos</option>
+        <option value="3" {{ 'selected' if tipo_lancamento_id == 3 }}>Despesas</option>
+        <option value="1" {{ 'selected' if tipo_lancamento_id == 1 }}>Receitas</option>
+        <option value="4" {{ 'selected' if tipo_lancamento_id == 4 }}>Transferências</option>
+      </select>
+    </div>
+
     <!-- Navegação de Período -->
     <div class="form-group mb-0 flex items-center justify-between gap-2">
        <div class="period-nav w-full">
-          {% set prev_m = 12 if mes == 1 else mes - 1 %}
-          {% set prev_y = ano - 1 if mes == 1 else ano %}
-          {% set next_m = 1 if mes == 12 else mes + 1 %}
-          {% set next_y = ano + 1 if mes == 12 else ano %}
+          <input type="hidden" name="m" id="input_m" value="{{ mes }}">
+          <input type="hidden" name="y" id="input_y" value="{{ ano }}">
 
-          <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ prev_m }}&y={{ prev_y }}" class="btn-icon btn-xs">
+          <button type="button" onclick="changeMonth(-1)" class="btn-icon btn-xs">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-          </a>
-          <span style="font-size: 13px; font-weight: 600;">{{ mes_por_extenso(mes, ano) }}</span>
-          <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ next_m }}&y={{ next_y }}" class="btn-icon btn-xs">
+          </button>
+          
+          <div class="month-display" onclick="toggleMonthPicker()">
+            {{ mes_por_extenso(mes, ano) }}
+          </div>
+          
+          <button type="button" onclick="changeMonth(1)" class="btn-icon btn-xs">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-          </a>
+          </button>
+
           {% if mes != hoje.month or ano != hoje.year %}
-
-            <a href="?c={{ conta_id or '' }}&cat={{ cat_id or '' }}&status={{ status_id if status_id != None else '' }}&m={{ hoje.month }}&y={{ hoje.year }}" class="btn-icon btn-xs" title="Ir para hoje">
+            <button type="button" onclick="goToToday()" class="btn-icon btn-xs" title="Ir para hoje">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-            </a>
-
+            </button>
           {% endif %}
+
+          <!-- Month Picker Popup -->
+          <div class="month-picker-popup" id="monthPickerPopup">
+            <div class="picker-header">
+              <button type="button" onclick="changeYearPicker(-1)" class="btn-icon btn-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="picker-year" id="pickerYearDisplay">{{ ano }}</span>
+              <button type="button" onclick="changeYearPicker(1)" class="btn-icon btn-xs">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+            <div class="months-grid">
+              {% for i in range(1, 13) %}
+                <button type="button" 
+                        class="month-btn {{ 'active' if i == mes }}" 
+                        data-month="{{ i }}"
+                        onclick="selectPickerMonth(this.dataset.month)">
+                  {{ NOMES_MESES[i][:3] }}
+                </button>
+              {% endfor %}
+            </div>
+          </div>
        </div>
     </div>
     
-    <input type="hidden" name="m" value="{{ mes }}">
-    <input type="hidden" name="y" value="{{ ano }}">
+    <!-- Hidden inputs m and y are now managed inside .period-nav -->
   </form>
 </div>
 
@@ -203,7 +319,6 @@
     <table>
       <thead>
         <tr>
-        <tr>
           <th width="40" class="text-center">
             <input type="checkbox" class="checkbox-custom" id="selectAllExtrato" onclick="toggleSelectAll(this)">
           </th>
@@ -212,12 +327,50 @@
           <th>Descrição</th>
           <th>Categoria</th>
           <th class="text-right">Valor</th>
+          <th class="text-right">Saldo</th>
           <th width="60" class="text-right">Ações</th>
           <th width="10" class="text-right"></th>
         </tr>
       </thead>
       <tbody>
+        <!-- Saldo Anterior -->
+        <tr class="bg-muted-light">
+          <td class="text-center"></td>
+          <td class="nowrap">
+            <div class="flex items-center gap-2">
+              <span class="text-muted">{{ mostra_data(data_saldo_anterior) if data_saldo_anterior else '--/--/----' }}</span>
+            </div>
+          </td>
+          {% if not conta_id %}<td></td>{% endif %}
+          <td colspan="3"><span class="font-bold italic text-muted">Saldo Anterior</span></td>
+          <td class="text-right font-bold {{ cor_valor(saldo_anterior) }}">
+            {{ formata_moeda(saldo_anterior) }}
+          </td>
+          <td colspan="2"></td>
+        </tr>
+
+        {% set ns = namespace(balance=saldo_anterior, last_date=None) %}
         {% for op in operacoes %}
+        {% set current_date = op.operacoes_data_efetivado if op.operacoes_data_efetivado else op.operacoes_data_lancamento %}
+        
+        {# Resumo Diário #}
+        {% if ns.last_date and ns.last_date != current_date %}
+        <tr class="daily-summary" style="background: rgba(255, 255, 255, 0.02); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+          <td colspan="{{ 6 if not conta_id else 5 }}" class="text-center py-1">
+            <span class="text-muted" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+              Saldo dia {{ mostra_data(ns.last_date) }}:
+            </span>
+          </td>
+          <td class="text-right py-1 font-bold {{ cor_valor(ns.balance) }}" style="font-size: 12px;">
+            {{ formata_moeda(ns.balance) }}
+          </td>
+          <td colspan="2"></td>
+        </tr>
+        {% endif %}
+        {% set ns.last_date = current_date %}
+        
+        {% if op.operacoes_efetivado %}{% set ns.balance = ns.balance + op.operacoes_valor %}{% endif %}
+        
         {% set is_efetivado = (op.operacoes_efetivado == 1) %}
         {% set is_atrasado = (not is_efetivado and op.operacoes_data_lancamento < hoje) %}
         <tr class="{% if is_efetivado %}{% else %}op-pendente{% endif %} {% if is_atrasado %}op-atrasada{% endif %}">
@@ -236,7 +389,7 @@
               {% else %}
                 <svg width="14" height="14" class="text-accent inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
               {% endif %}
-              <span>{{ mostra_data(op.operacoes_data_lancamento) }}</span>
+              <span>{{ mostra_data(op.operacoes_data_efetivado if op.operacoes_data_efetivado else op.operacoes_data_lancamento) }}</span>
             </div>
           </td>
           {% if not conta_id %}
@@ -268,6 +421,9 @@
           </td>
           <td class="text-right font-bold {{ cor_valor(op.operacoes_valor) if op.operacoes_efetivado else '' }}">
             {{ formata_moeda(op.operacoes_valor) }}
+          </td>
+          <td class="text-right font-bold {{ cor_valor(ns.balance) if op.operacoes_efetivado else 'text-muted' }}">
+            {{ formata_moeda(ns.balance) }}
           </td>
           <td class="text-right">
             <div class="dropdown-kebab">
@@ -331,11 +487,22 @@
             {% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr>
-          <td colspan="{{ 7 if not conta_id else 6 }}" class="text-center text-muted p-6">Nenhum lançamento encontrado para este período com os filtros aplicados.</td>
-        </tr>
         {% endfor %}
+        
+        {# Resumo Diário para o último dia #}
+        {% if ns.last_date %}
+        <tr class="daily-summary" style="background: rgba(255, 255, 255, 0.02); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+          <td colspan="{{ 6 if not conta_id else 5 }}" class="text-center py-1">
+            <span class="text-muted" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+              Saldo dia {{ mostra_data(ns.last_date) }}:
+            </span>
+          </td>
+          <td class="text-right py-1 font-bold {{ cor_valor(ns.balance) }}" style="font-size: 12px;">
+            {{ formata_moeda(ns.balance) }}
+          </td>
+          <td colspan="2"></td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -378,7 +545,7 @@
             <input type="radio" name="tipo" value="1" required> Receita
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" value="3" checked required> Despesa
+            <input type="radio" name="tipo" value="3" required> Despesa
           </label>
         </div>
       </div>
@@ -1220,5 +1387,53 @@
     document.body.appendChild(form);
     form.submit();
   }
+  // --- Month Picker & Period Navigation ---
+  let pickerYear = parseInt("{{ ano }}");
+
+  function toggleMonthPicker() {
+    const popup = document.getElementById('monthPickerPopup');
+    popup.classList.toggle('show');
+  }
+
+  function changeYearPicker(delta) {
+    pickerYear += delta;
+    document.getElementById('pickerYearDisplay').innerText = pickerYear;
+  }
+
+  function selectPickerMonth(m) {
+    document.getElementById('input_m').value = m;
+    document.getElementById('input_y').value = pickerYear;
+    document.getElementById('filterForm').submit();
+  }
+
+  function changeMonth(delta) {
+    let m = parseInt(document.getElementById('input_m').value);
+    let y = parseInt(document.getElementById('input_y').value);
+    
+    m += delta;
+    if (m > 12) { m = 1; y++; }
+    if (m < 1) { m = 12; y--; }
+    
+    document.getElementById('input_m').value = m;
+    document.getElementById('input_y').value = y;
+    document.getElementById('filterForm').submit();
+  }
+
+  function goToToday() {
+    const hoje = new Date();
+    document.getElementById('input_m').value = hoje.getMonth() + 1;
+    document.getElementById('input_y').value = hoje.getFullYear();
+    document.getElementById('filterForm').submit();
+  }
+
+  // Close picker when clicking outside
+  document.addEventListener('click', function(event) {
+    const nav = document.querySelector('.period-nav');
+    const popup = document.getElementById('monthPickerPopup');
+    if (nav && !nav.contains(event.target)) {
+      popup.classList.remove('show');
+    }
+  });
+
 </script>
 {% endblock %}

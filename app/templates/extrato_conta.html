@@ -113,11 +113,46 @@
           <th>Descrição</th>
           <th>Categoria</th>
           <th class="text-right">Valor</th>
+          <th class="text-right">Saldo</th>
           <th width="120">Ações</th>
         </tr>
       </thead>
       <tbody>
+        <!-- Saldo Anterior -->
+        <tr class="bg-muted-light">
+          <td></td>
+          <td class="nowrap">
+            <span class="text-muted">{{ mostra_data(data_saldo_anterior) if data_saldo_anterior else '--/--/----' }}</span>
+          </td>
+          <td colspan="3"><span class="font-bold italic text-muted">Saldo Anterior</span></td>
+          <td class="text-right font-bold {{ cor_valor(saldo_anterior) }}">
+            {{ formata_moeda(saldo_anterior) }}
+          </td>
+          <td></td>
+        </tr>
+
+        {% set ns = namespace(balance=saldo_anterior, last_date=None) %}
         {% for op in operacoes %}
+        {% set current_date = op.operacoes_data_efetivado if op.operacoes_data_efetivado else op.operacoes_data_lancamento %}
+        
+        {# Resumo Diário #}
+        {% if ns.last_date and ns.last_date != current_date %}
+        <tr class="daily-summary" style="background: rgba(255, 255, 255, 0.02); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+          <td colspan="5" class="text-center py-1">
+            <span class="text-muted" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+              Saldo dia {{ mostra_data(ns.last_date) }}:
+            </span>
+          </td>
+          <td class="text-right py-1 font-bold {{ cor_valor(ns.balance) }}" style="font-size: 12px;">
+            {{ formata_moeda(ns.balance) }}
+          </td>
+          <td></td>
+        </tr>
+        {% endif %}
+        {% set ns.last_date = current_date %}
+        
+        {% if op.operacoes_efetivado %}{% set ns.balance = ns.balance + op.operacoes_valor %}{% endif %}
+        
         <tr class="{% if not op.operacoes_efetivado %}text-muted{% endif %}">
           <td class="text-center">
             {% if op.operacoes_tipo == 1 %}
@@ -154,6 +189,9 @@
           <td class="text-right font-bold {{ cor_valor(op.operacoes_valor) }}">
             {{ formata_moeda(op.operacoes_valor) }}
           </td>
+          <td class="text-right font-bold {{ cor_valor(ns.balance) if op.operacoes_efetivado else 'text-muted' }}">
+            {{ formata_moeda(ns.balance) }}
+          </td>
           <td>
             <div class="flex gap-1 justify-end">
               {% if not op.operacoes_efetivado %}
@@ -180,11 +218,22 @@
             </div>
           </td>
         </tr>
-        {% else %}
-        <tr>
-          <td colspan="6" class="text-center text-muted p-6">Nenhum lançamento encontrado para este período.</td>
-        </tr>
         {% endfor %}
+        
+        {# Resumo Diário para o último dia #}
+        {% if ns.last_date %}
+        <tr class="daily-summary" style="background: rgba(255, 255, 255, 0.02); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+          <td colspan="5" class="text-center py-1">
+            <span class="text-muted" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+              Saldo dia {{ mostra_data(ns.last_date) }}:
+            </span>
+          </td>
+          <td class="text-right py-1 font-bold {{ cor_valor(ns.balance) }}" style="font-size: 12px;">
+            {{ formata_moeda(ns.balance) }}
+          </td>
+          <td></td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>

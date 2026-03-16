@@ -1,6 +1,6 @@
 """routers/extrato.py — Extrato de conta e extrato geral."""
 from pathlib import Path
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Request, Depends, Query
 from fastapi.responses import HTMLResponse
@@ -25,6 +25,7 @@ async def extrato_unificado(
     c: Optional[str] = Query(None, description="ID da conta"),
     m: int = Query(default=date.today().month, description="Mês"),
     y: int = Query(default=date.today().year, description="Ano"),
+    tipo_lancamento: Optional[str] = Query(None, description="Tipo de Lançamento"),
     cat: Optional[str] = Query(None, description="ID da categoria"),
     status: Optional[str] = Query(None, description="Status (0=pendente, 1=efetivado)"),
     sessao: dict = Depends(require_login),
@@ -34,6 +35,7 @@ async def extrato_unificado(
     c_id = int(c) if c and c.strip() else None
     cat_id = int(cat) if cat and cat.strip() else None
     status_id = int(status) if status and status.strip() else None
+    tipo_lancamento_id = int(tipo_lancamento) if tipo_lancamento and tipo_lancamento.strip() else None
 
     # Query base
     query = db.query(Operacao).options(
@@ -76,6 +78,10 @@ async def extrato_unificado(
     if c_id:
         query = query.filter(Operacao.operacoes_conta == c_id)
     
+    # Filtro do Tipo de Lançamento
+    if tipo_lancamento_id is not None:
+        query = query.filter(Operacao.operacoes_tipo == tipo_lancamento_id)
+    
     # Filtro de Categoria
     if cat_id:
         # Busca a categoria e suas subcategorias recursivamente (apenas 1 nível por enquanto 
@@ -98,7 +104,7 @@ async def extrato_unificado(
         ), 1),
         else_=0
     )
-    operacoes = query.order_by(is_atrasado, Operacao.operacoes_data_lancamento, Operacao.operacoes_id).all()
+    operacoes = query.order_by(is_atrasado, Operacao.operacoes_data_efetivado, Operacao.operacoes_data_lancamento, Operacao.operacoes_id).all()
 
     # Cálculo do saldo anterior (acumulado antes do mês)
     # Deve considerar apenas a conta selecionada OU todas se nenhuma selecionada
@@ -141,9 +147,11 @@ async def extrato_unificado(
         "tipos_conta_map": mapa_tipo_conta,
         "mes": m,
         "ano": y,
-        "cat_id": cat,
-        "status_id": status,
+        "cat_id": cat_id,
+        "status_id": status_id,
+        "tipo_lancamento_id": tipo_lancamento_id,
         "hoje": date.today(),
+        "data_saldo_anterior": date(y, m, 1) - timedelta(days=1) if m and y else None,
     })
 
 
@@ -153,9 +161,11 @@ async def extrato_por_conta(
     conta_id: int,
     m: int = Query(default=date.today().month, description="Mês"),
     y: int = Query(default=date.today().year, description="Ano"),
+    tipo_lancamento: Optional[str] = Query(None, description="Tipo de Lançamento"),
     sessao: dict = Depends(require_login),
     db: Session = Depends(get_db),
 ):
+    tipo_lancamento_id = int(tipo_lancamento) if tipo_lancamento and tipo_lancamento.strip() else None
     conta = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_id).first()
     if not conta:
         from fastapi.responses import RedirectResponse
@@ -192,6 +202,10 @@ async def extrato_por_conta(
             extract('year', Operacao.operacoes_data_lancamento) == y,
         )
 
+    # Filtro do Tipo de Lançamento
+    if tipo_lancamento_id is not None:
+        query = query.filter(Operacao.operacoes_tipo == tipo_lancamento_id)
+
     is_atrasado = case(
         (and_(
             func.coalesce(Operacao.operacoes_efetivado, 0) != 1,
@@ -226,6 +240,8 @@ async def extrato_por_conta(
         "contas_todas": contas_todas,
         "mes": m,
         "ano": y,
+        "tipo_lancamento_id": tipo_lancamento_id,
         "hoje": date.today(),
+        "data_saldo_anterior": date(y, m, 1) - timedelta(days=1) if m and y else None,
     })
 
