@@ -130,8 +130,9 @@ async def inserir_lancamento(
 ):
     # Limpa formatação BRL (1.800,00 -> 1800.00)
     valor_limpo = valor.replace(".", "").replace(",", ".")
-    valor_float = float(valor_limpo)
-    valor_final = -abs(valor_float) if tipo == 3 else abs(valor_float)
+    from decimal import Decimal, ROUND_HALF_UP
+    valor_dec = Decimal(valor_limpo)
+    valor_final = -abs(valor_dec) if tipo == 3 else abs(valor_dec)
 
     # Converte categoria e fatura para int ou None (lidando com strings vazias do form)
     cat_id = int(categoria) if categoria and categoria.strip() and categoria != "-1" else None
@@ -169,7 +170,12 @@ async def inserir_lancamento(
         if data_efetivado:
             dt_efetivado = datetime.fromisoformat(data_efetivado)
         else:
-            dt_efetivado = datetime.now()
+            # Regra: se for deste mês, usa hoje. Se for mês passado, usa a data do lançamento.
+            hoje = date.today()
+            if dt_operacao.year == hoje.year and dt_operacao.month == hoje.month:
+                dt_efetivado = datetime.now()
+            else:
+                dt_efetivado = datetime.combine(dt_operacao, datetime.min.time())
 
     grupo_id = f"GAP-{uuid.uuid4().hex[:10]}" if (parcela_str or repetir) else None
     
@@ -182,10 +188,16 @@ async def inserir_lancamento(
             repeticoes = ocorrencias or 12
 
     # Lógica de Cálculo: Total vs Parcela
+    # Para recorrência, o padrão costuma ser "valor da parcela".
+    # Para parcelado, o padrão costuma ser "total da compra".
+    if not valor_total_ou_parcela:
+        valor_total_ou_parcela = "total" if modo_repeticao == "parcelado" else "parcela"
+
     valor_unitario = valor_final
-    resto_divisao = 0
+    resto_divisao = Decimal("0")
+    
     if is_repetir and valor_total_ou_parcela == "total":
-        valor_unitario = round(valor_final / repeticoes, 2)
+        valor_unitario = (valor_final / repeticoes).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         # Calcula a diferença de arredondamento para a última parcela
         resto_divisao = valor_final - (valor_unitario * repeticoes)
 
@@ -197,6 +209,8 @@ async def inserir_lancamento(
                 curr_dt = dt_operacao + relativedelta(months=i)
             elif frequencia == "semanal":
                 curr_dt = dt_operacao + timedelta(weeks=i)
+            elif frequencia == "diaria":
+                curr_dt = dt_operacao + timedelta(days=i)
             elif frequencia == "anual":
                 curr_dt = dt_operacao + relativedelta(years=i)
         
@@ -248,8 +262,10 @@ async def inserir_lancamento(
                 operacoes_data_efetivado=curr_dt_efetivado,
                 operacoes_validacao=1,
                 operacoes_grupo_id=grupo_id,
-                operacoes_transf_rel=op.operacoes_id # Primeiro ID provisório, corrigiremos abaixo
+                operacoes_transf_rel=op.operacoes_id 
             )
+            # A conta de origem em uma transferência deve ser negativa
+            op.operacoes_valor = -abs(curr_valor)
             db.add(op_destino)
             db.flush()
             op.operacoes_transf_rel = op_destino.operacoes_id
@@ -277,7 +293,14 @@ async def inserir_lancamento(
 async def efetivar(request: Request, op_id: int, db=Depends(get_db), sessao=Depends(require_login)):
     op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
     if op:
-        agora = datetime.now()
+        # Regra: se for deste mês, usa hoje. Se for mês passado, usa a data do lançamento.
+        hoje = date.today()
+        dt_op = op.operacoes_data_lancamento
+        if dt_op.year == hoje.year and dt_op.month == hoje.month:
+            agora = datetime.now()
+        else:
+            agora = datetime.combine(dt_op, datetime.min.time())
+            
         op.operacoes_efetivado = 1
         op.operacoes_data_efetivado = agora  # registra quando de fato foi conciliado
 
@@ -461,6 +484,7 @@ async def editar_get(
         "efetivado": int(op.operacoes_efetivado) if op.operacoes_efetivado is not None else 0,
         "data_efetivado": op.operacoes_data_efetivado.strftime("%Y-%m-%d") if op.operacoes_data_efetivado else None,
         "adicional_id": op.operacoes_adicional_id,
+        "grupo_id": op.operacoes_grupo_id,
     }))
 
 
@@ -793,8 +817,15 @@ async def conciliar_massa(
     for op_id in op_ids:
         op = db.query(Operacao).filter(Operacao.operacoes_id == op_id).first()
         if op:
+            hoje = date.today()
+            dt_op = op.operacoes_data_lancamento
+            if dt_op.year == hoje.year and dt_op.month == hoje.month:
+                agora = datetime.now()
+            else:
+                agora = datetime.combine(dt_op, datetime.min.time())
+
             op.operacoes_efetivado = 1
-            op.operacoes_data_efetivado = datetime.now()
+            op.operacoes_data_efetivado = agora
             if op.operacoes_fatura: faturas_recalc.add(op.operacoes_fatura)
             
             # Se for transferência, concilia o outro lado

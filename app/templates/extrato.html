@@ -542,10 +542,10 @@
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" value="1" required> Receita
+            <input type="radio" name="tipo" value="1" required onchange="filterCategories('novo', this.value)"> Receita
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" value="3" required> Despesa
+            <input type="radio" name="tipo" value="3" required onchange="filterCategories('novo', this.value)"> Despesa
           </label>
         </div>
       </div>
@@ -562,20 +562,84 @@
         </div>
         <div class="form-group">
           <label class="form-label">Data</label>
-          <input type="date" name="data" class="form-control" value="{{ hoje.isoformat() }}" required>
+          <input type="date" name="data" id="novo_data" class="form-control" value="{{ hoje.isoformat() }}" required>
         </div>
       </div>
 
       <div class="form-group">
         <label class="form-label">Categoria</label>
-        <select name="categoria" class="form-control">
+        <select name="categoria" id="novo_cat" class="form-control">
           <option value="">Sem Categoria</option>
           {% for cat in categorias %}
-          <option value="{{ cat.categorias_id }}">
+          <option value="{{ cat.categorias_id }}" data-classe="{{ cat.categorias_classe }}">
             {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
           </option>
           {% endfor %}
         </select>
+      </div>
+
+      <!-- Repetir Lançamento -->
+      <div class="form-group mb-4">
+        <div class="flex items-center gap-2">
+          <label class="form-label mb-0" style="margin-right: 4px;">Repetir Lançamento?</label>
+          <label class="switch-wrapper">
+            <span class="switch-label label-nao">não</span>
+            <div class="switch">
+              <input type="checkbox" id="novo_checkRepetir" name="repetir" onchange="toggleRepetir('novo_')">
+              <span class="slider"></span>
+            </div>
+            <span class="switch-label label-sim">sim</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="novo_divRepeticao" style="display: none; border: 1px dashed #444; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: rgba(255,255,255,0.02);">
+        <div class="form-group">
+          <label class="form-label">Modo de Repetição</label>
+          <div class="flex gap-4">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="modo_repeticao" value="parcelado" checked onchange="toggleModoRepeticao('novo_')">
+              <span>Parcelar</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="modo_repeticao" value="recorrente" onchange="toggleModoRepeticao('novo_')">
+              <span>Recorrência</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group mb-3">
+            <label class="form-label">O valor digitado é...</label>
+            <select name="valor_total_ou_parcela" id="novo_valor_total_ou_parcela" class="form-control">
+                <option value="total">Total (dividir pelas parcelas)</option>
+                <option value="parcela">De cada lançamento (repetir valor)</option>
+            </select>
+        </div>
+
+        <div id="novo_divParcelado" class="flex flex-col gap-3">
+          <div class="form-grid-2">
+            <div class="form-group mb-0">
+              <label class="form-label">Número de Parcelas</label>
+              <input type="number" name="num_parcelas" class="form-control" min="2" max="120" value="2">
+            </div>
+          </div>
+        </div>
+
+        <div id="novo_divRecorrente" class="form-grid-2" style="display: none;">
+          <div class="form-group mb-0">
+            <label class="form-label">Frequência</label>
+            <select name="frequencia" class="form-control">
+              <option value="diaria">Diária</option>
+              <option value="semanal">Semanal</option>
+              <option value="mensal" selected>Mensal</option>
+              <option value="anual">Anual</option>
+            </select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Ocorrências</label>
+            <input type="number" name="ocorrencias" class="form-control" min="1" max="180" value="12">
+          </div>
+        </div>
       </div>
       
       <!-- Efetivado -->
@@ -653,7 +717,7 @@
         <label class="switch-wrapper">
           <span class="switch-label label-nao">não</span>
           <div class="switch">
-            <input type="checkbox" id="checkRepetir" name="repetir" onchange="toggleRepetir()">
+            <input type="checkbox" id="checkRepetir" name="repetir" onchange="toggleRepetir('')">
             <span class="slider"></span>
           </div>
           <span class="switch-label label-sim">sim</span>
@@ -666,14 +730,22 @@
         <label class="form-label">Modo de Repetição</label>
         <div class="flex gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="modo_repeticao" value="parcelado" checked onchange="toggleModoRepeticao()">
+            <input type="radio" name="modo_repeticao" value="parcelado" checked onchange="toggleModoRepeticao('')">
             <span>Parcelar</span>
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="modo_repeticao" value="recorrente" onchange="toggleModoRepeticao()">
+            <input type="radio" name="modo_repeticao" value="recorrente" onchange="toggleModoRepeticao('')">
             <span>Recorrência</span>
           </label>
         </div>
+      </div>
+
+      <div class="form-group mb-3">
+          <label class="form-label">O valor digitado é...</label>
+          <select name="valor_total_ou_parcela" id="valor_total_ou_parcela" class="form-control">
+              <option value="total">Total (dividir pelas parcelas)</option>
+              <option value="parcela">De cada lançamento (repetir valor)</option>
+          </select>
       </div>
 
       <div id="divParcelado" class="form-grid-2">
@@ -687,14 +759,15 @@
         <div class="form-group mb-0">
           <label class="form-label">Frequência</label>
           <select name="frequencia" class="form-control">
-            <option value="mensal">Mensal</option>
+            <option value="diaria">Diária</option>
             <option value="semanal">Semanal</option>
+            <option value="mensal" selected>Mensal</option>
             <option value="anual">Anual</option>
           </select>
         </div>
         <div class="form-group mb-0">
           <label class="form-label">Ocorrências</label>
-          <input type="number" name="ocorrencias" class="form-control" min="1" max="60" value="12">
+          <input type="number" name="ocorrencias" class="form-control" min="1" max="180" value="12">
         </div>
       </div>
     </div>
@@ -706,15 +779,15 @@
       <label class="switch-wrapper">
         <span class="switch-label label-nao">não</span>
         <div class="switch">
-          <input type="checkbox" id="checkEfetivado" onchange="handleEfetivadoToggle()">
+          <input type="checkbox" id="nova_transf_efetivado_check" onchange="toggleDataEfetivado('nova_transf')">
           <span class="slider"></span>
         </div>
         <span class="switch-label label-sim">sim</span>
       </label>
-      <input type="hidden" name="efetivado" id="input_efetivado" value="0">
+      <input type="hidden" name="efetivado" id="nova_transf_efetivado_val" value="0">
     </div>
 
-    <div id="divDataEfetivado" class="form-group mb-6" style="display:none">
+    <div id="nova_transf_data_efetivado_wrap" class="form-group mb-6" style="display:none">
       <label class="form-label">Data de Efetivação</label>
       <input type="date" name="data_efetivado" id="nova_transf_data_efetivado" class="form-control" value="{{ hoje }}">
     </div>
@@ -784,10 +857,10 @@
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" id="edit_tipo_receita" value="1"> Receita
+            <input type="radio" name="tipo" id="edit_tipo_receita" value="1" onchange="filterCategories('edit', this.value)"> Receita
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" id="edit_tipo_despesa" value="3"> Despesa
+            <input type="radio" name="tipo" id="edit_tipo_despesa" value="3" onchange="filterCategories('edit', this.value)"> Despesa
           </label>
         </div>
       </div>
@@ -810,7 +883,7 @@
         <select name="categoria" id="edit_cat" class="form-control">
           <option value="">Sem Categoria</option>
           {% for cat in categorias %}
-          <option value="{{ cat.categorias_id }}">
+          <option value="{{ cat.categorias_id }}" data-classe="{{ cat.categorias_classe }}">
             {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
           </option>
           {% endfor %}
@@ -968,6 +1041,18 @@
         </div>
         <input type="hidden" name="efetivado" id="edit_transf_efetivado_val" value="0">
       </div>
+      <!-- Escopo (transferência) -->
+      <div id="edit_escopo_section_transf" class="form-group" style="display:none">
+        <label class="form-label">Alterar lançamentos</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo_radio_transf" value="so_este" onchange="document.getElementById('edit_escopo_transf').value=this.value"> Apenas este
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo_radio_transf" value="subsequentes" checked onchange="document.getElementById('edit_escopo_transf').value=this.value"> Este e todos os subsequentes
+          </label>
+        </div>
+      </div>
       <div class="flex justify-end mt-4">
         <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
       </div>
@@ -1047,18 +1132,30 @@
         <label class="form-label">Status</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="edit_transf_efetivado_check" onchange="toggleDataEfetivado('edit_transf')">
+            <input type="checkbox" id="edit_pag_fatura_efetivado_check" onchange="toggleDataEfetivado('edit_pag_fatura')">
             <span>Já efetivado</span>
           </label>
-          <div id="edit_transf_data_efetivado_wrap" style="display:none">
+          <div id="edit_pag_fatura_data_efetivado_wrap" style="display:none">
             <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
-            <input type="date" name="data_efetivado" id="edit_transf_data_efetivado" class="form-control">
+            <input type="date" name="data_efetivado" id="edit_pag_fatura_data_efetivado" class="form-control">
           </div>
         </div>
-        <input type="hidden" name="efetivado" id="edit_transf_efetivado_val" value="0">
+        <input type="hidden" name="efetivado" id="edit_pag_fatura_efetivado_val" value="0">
+      </div>
+      <!-- Escopo (pagamento fatura) -->
+      <div id="edit_escopo_section_pag_fatura" class="form-group" style="display:none">
+        <label class="form-label">Alterar lançamentos</label>
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo_radio_pf" value="so_este" onchange="document.getElementById('edit_escopo_pag_fatura').value=this.value"> Apenas este
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="escopo_radio_pf" value="subsequentes" checked onchange="document.getElementById('edit_escopo_pag_fatura').value=this.value"> Este e todos os subsequentes
+          </label>
+        </div>
       </div>
       <div class="flex justify-end mt-4">
-        <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
+        <button type="submit" class="btn btn-primary">Atualizar Pagamento</button>
       </div>
     </form>
 
@@ -1096,22 +1193,64 @@
     }
   }
 
+  function getDefaultEffectiveDate(transDateStr) {
+    if (!transDateStr) return new Date().toISOString().split('T')[0];
+    const transDate = new Date(transDateStr + 'T00:00:00');
+    const today = new Date();
+    if (transDate.getMonth() === today.getMonth() && transDate.getFullYear() === today.getFullYear()) {
+      return today.toISOString().split('T')[0];
+    } else {
+      return transDate.toISOString().split('T')[0];
+    }
+  }
+
   function toggleDataEfetivado(prefix) {
     const check = document.getElementById(prefix + '_efetivado_check');
     const wrap = document.getElementById(prefix + '_data_efetivado_wrap');
     const hidden = document.getElementById(prefix + '_efetivado_val');
+    const transDateInput = document.getElementById(prefix + '_data');
+    
     if (check.checked) {
       wrap.style.display = '';
       hidden.value = '1';
       const dateField = document.getElementById(prefix + '_data_efetivado');
-      if (!dateField.value) dateField.value = new Date().toISOString().split('T')[0];
+      if (!dateField.value) {
+        dateField.value = getDefaultEffectiveDate(transDateInput ? transDateInput.value : null);
+      }
     } else {
       wrap.style.display = 'none';
       hidden.value = '0';
     }
   }
 
-  function _setEfetivado(prefix, efetivado, dataEfetivado) {
+  function filterCategories(prefix, type) {
+    const select = document.getElementById(prefix + '_cat');
+    if (!select) return;
+    
+    const options = select.options;
+    let currentValid = false;
+    const currentVal = select.value;
+
+    for (let i = 0; i < options.length; i++) {
+        const opt = options[i];
+        const classe = opt.dataset.classe;
+        
+        // Sempre mostrar "Sem Categoria" ou se a classe for compatível
+        if (opt.value === "" || !classe || classe == type || classe == "0") {
+            opt.style.display = "";
+            if (opt.value === currentVal) currentValid = true;
+        } else {
+            opt.style.display = "none";
+        }
+    }
+
+    // Se o valor selecionado foi escondido, volta para "Sem Categoria"
+    if (!currentValid) {
+        select.value = "";
+    }
+  }
+
+  function _setEfetivado(prefix, efetivado, dataEfetivado, transDate) {
     const check = document.getElementById(prefix + '_efetivado_check');
     const wrap = document.getElementById(prefix + '_data_efetivado_wrap');
     const hidden = document.getElementById(prefix + '_efetivado_val');
@@ -1120,7 +1259,7 @@
     hidden.value = efetivado ? '1' : '0';
     if (efetivado) {
       wrap.style.display = '';
-      dateField.value = dataEfetivado || new Date().toISOString().split('T')[0];
+      dateField.value = dataEfetivado || getDefaultEffectiveDate(transDate);
     } else {
       wrap.style.display = 'none';
       dateField.value = '';
@@ -1167,7 +1306,17 @@
         document.getElementById('edit_pag_fatura_data').value = data.data || '';
         document.getElementById('edit_pag_fatura_origem').value = data.conta || '';
         document.getElementById('edit_pag_fatura_destino').value = data.conta_destino || '';
-        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado);
+        _setEfetivado('edit_pag_fatura', data.efetivado, data.data_efetivado, data.data);
+        
+        // Exibe escopo se for série
+        const escSectionPf = document.getElementById('edit_escopo_section_pag_fatura');
+        if (data.parcela || data.recorrencia || data.grupo_id) {
+            escSectionPf.style.display = '';
+            document.getElementById('edit_escopo_pag_fatura').value = 'so_este';
+            form.querySelectorAll('[name="escopo_radio_pf"]').forEach(r => r.checked = (r.value === 'so_este'));
+        } else {
+            escSectionPf.style.display = 'none';
+        }
         form.style.display = '';
       } else if (data.tipo == 4 && data.transf_rel) {
         // === TRANSFERÊNCIA ===
@@ -1178,7 +1327,17 @@
         document.getElementById('edit_transf_data').value = data.data || '';
         document.getElementById('edit_transf_origem').value = data.conta || '';
         document.getElementById('edit_transf_destino').value = data.conta_destino || '';
-        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado);
+        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado, data.data);
+
+        // Exibe escopo se for série
+        const escSectionTransf = document.getElementById('edit_escopo_section_transf');
+        if (data.parcela || data.recorrencia || data.grupo_id) {
+            escSectionTransf.style.display = '';
+            document.getElementById('edit_escopo_transf').value = 'so_este';
+            form.querySelectorAll('[name="escopo_radio_transf"]').forEach(r => r.checked = (r.value === 'so_este'));
+        } else {
+            escSectionTransf.style.display = 'none';
+        }
         form.style.display = '';
       } else {
         // === RECEITA / DESPESA ===
@@ -1191,11 +1350,18 @@
         document.getElementById('edit_conta').value = data.conta || '';
         if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
         else document.getElementById('edit_tipo_despesa').checked = true;
-        _setEfetivado('edit', data.efetivado, data.data_efetivado);
+        
+        // Filtra as categorias com base no tipo carregado
+        filterCategories('edit', data.tipo);
+        
+        // Garante que a categoria carregada continue selecionada (se válida)
+        document.getElementById('edit_cat').value = data.categoria || '';
+
+        _setEfetivado('edit', data.efetivado, data.data_efetivado, data.data);
 
         // Escopo: mostrar se parcelado ou recorrente
         const escopoSection = document.getElementById('edit_escopo_section_rd');
-        if (data.parcela || data.recorrencia) {
+        if (data.parcela || data.recorrencia || data.grupo_id) {
           escopoSection.style.display = '';
           form.querySelectorAll('[name="escopo"]').forEach(r => { r.checked = (r.value === 'so_este'); });
           document.getElementById('edit_escopo_rd').value = 'so_este';
@@ -1291,32 +1457,34 @@
   }
 
 
-  function handleEfetivadoToggle() {
-    const isEfetivado = document.getElementById('checkEfetivado').checked;
-    document.getElementById('input_efetivado').value = isEfetivado ? "1" : "0";
-    document.getElementById('divDataEfetivado').style.display = isEfetivado ? "" : "none";
-  }
-
   function syncDataEfetivado() {
-    const isEfetivado = document.getElementById('checkEfetivado').checked;
-    if (!isEfetivado) {
-      const fieldData = document.getElementById('nova_transf_data');
-      const fieldDataEf = document.getElementById('nova_transf_data_efetivado');
-      if (fieldData && fieldDataEf) {
-        fieldDataEf.value = fieldData.value;
-      }
+    // Mantido apenas se necessário para algum log ou campo específico, 
+    // mas a lógica principal agora está em toggleDataEfetivado
+  }
+
+  function toggleRepetir(prefix = '') {
+    const isRepetir = document.getElementById(prefix + 'checkRepetir').checked;
+    document.getElementById(prefix + 'divRepeticao').style.display = isRepetir ? "" : "none";
+  }
+
+  function toggleModoRepeticao(prefix = '') {
+    const selector = prefix ? `input[name="modo_repeticao"][onchange*="${prefix}"]:checked` : 'input[name="modo_repeticao"]:not([onchange*="novo_"]):checked';
+    // Fallback mais simples para evitar seletores complexos:
+    let modo = "parcelado";
+    if (prefix === 'novo_') {
+        modo = document.querySelector('#novo_divRepeticao input[name="modo_repeticao"]:checked').value;
+    } else {
+        modo = document.querySelector('#divRepeticao input[name="modo_repeticao"]:checked').value;
     }
-  }
 
-  function toggleRepetir() {
-    const isRepetir = document.getElementById('checkRepetir').checked;
-    document.getElementById('divRepeticao').style.display = isRepetir ? "" : "none";
-  }
-
-  function toggleModoRepeticao() {
-    const modo = document.querySelector('input[name="modo_repeticao"]:checked').value;
-    document.getElementById('divParcelado').style.display = (modo === 'parcelado') ? "" : "none";
-    document.getElementById('divRecorrente').style.display = (modo === 'recorrente') ? "" : "none";
+    document.getElementById(prefix + 'divParcelado').style.display = (modo === 'parcelado') ? "" : "none";
+    document.getElementById(prefix + 'divRecorrente').style.display = (modo === 'recorrente') ? "" : "none";
+    
+    // Ajusta o padrão do select de valor total/parcela
+    const select = document.getElementById(prefix + 'valor_total_ou_parcela');
+    if (select) {
+        select.value = (modo === 'parcelado') ? 'total' : 'parcela';
+    }
   }
 
   // Ações em massa
