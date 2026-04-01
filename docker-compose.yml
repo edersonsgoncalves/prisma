@@ -4,12 +4,12 @@ services:
     container_name: prisma_db_local
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: Pr!5m@
-      MYSQL_DATABASE: prisma_db
-      MYSQL_USER: prisma_user
-      MYSQL_PASSWORD: Pr!5m@
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
     ports:
-      - "3307:3306" # No PC usamos 3307 para não dar conflito se você já tiver MySQL instalado
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 
