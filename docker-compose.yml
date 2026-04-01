@@ -1,4 +1,18 @@
 services:
+  db:
+    image: mysql:8.0
+    container_name: prisma_db_local
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
   app:
     build: .
     container_name: prisma_app
@@ -8,8 +22,13 @@ services:
       - .:/app
     env_file:
       - .env
+    depends_on:
+      - db
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - DEBUG=true
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mysql_data:
