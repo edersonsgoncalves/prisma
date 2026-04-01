@@ -1,0 +1,37 @@
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.pytest_cache/
+.db
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+env/
+
+# Configuration and Secrets
+.env
+.env.*
+
+# Scripts de migração temporários (opcional, se quiser manter o repo limpo)
+tmp_*.py
+fix_*.py
+test_*.py
+
+# Dados e Backups
+mysql_revert/
+*.sql
+
+# Docker
+.docker/
+
+# IDEs
+.vscode/
+.idea/

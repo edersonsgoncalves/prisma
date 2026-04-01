@@ -1,0 +1,40 @@
+{% block extra_scripts %}
+<script>
+  function updateToggleUI() {
+    const isChecked = document.getElementById('toggleCartao').checked;
+    const text = document.getElementById('toggleText');
+    if (isChecked) {
+      text.textContent = 'Sim';
+      text.classList.remove('text-muted');
+      text.classList.add('text-success');
+    } else {
+      text.textContent = 'Não';
+      text.classList.remove('text-success');
+      text.classList.add('text-muted');
+    }
+  }
+
+  function handleSave() {
+    const isCartao = document.getElementById('toggleCartao').checked;
+    const form = document.querySelector('form');
+    
+    // Validação básica manual antes de abrir modal
+    if (!form.descricao.value || !form.valor.value || !form.data.value) {
+      form.reportValidity();
+      return;
+    }
+
+    if (isCartao) {
+      openModal('modalSelecionarCartao');
+    } else {
+      document.getElementById('input_fatura').value = "";
+      form.submit();
+    }
+  }
+
+  function selectCardAndSubmit(cardId) {
+    document.getElementById('input_fatura').value = cardId;
+    document.querySelector('form').submit();
+  }
+</script>
+{% endblock %}

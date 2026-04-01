@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Categorias{% endblock %}
+{% block page_title %}Categorias de Lançamentos{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Categorias</h1>
+    <p>Organize seus lançamentos por tipo de gasto ou receita.</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modalNovaCat')">Nova Categoria</button>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Tipo</th>
+          <th width="100" class="text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cat in categorias %}
+        <tr>
+          <td class="font-bold">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </td>
+          <td>
+            {% if cat.categorias_classe == 1 %}
+              <span class="badge badge-success">Receitas</span>
+            {% elif cat.categorias_classe == 3 %}
+              <span class="badge badge-danger">Despesas</span>
+            {% else %}
+              <span class="badge badge-muted">Geral</span>
+            {% endif %}
+          </td>
+          <td class="text-right">
+            <form action="/categorias/deletar/{{ cat.categorias_id }}" method="post" style="display:inline;">
+              <button type="submit" class="btn btn-danger btn-xs" onclick="return confirm('Excluir categoria?')">Excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalNovaCat">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Nova Categoria</h2>
+      <button class="modal-close" onclick="closeModal('modalNovaCat')">&times;</button>
+    </div>
+    <form action="/categorias/nova" method="post">
+      <div class="form-group">
+        <label class="form-label">Nome</label>
+        <input type="text" name="nome" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de Lançamento</label>
+        <select name="classe" class="form-control">
+          <option value="0">Geral</option>
+          <option value="1">Receitas</option>
+          <option value="3">Despesas</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria Pai (Opcional)</label>
+        <select name="pai_id" class="form-control">
+          <option value="">Nenhuma (Categoria Principal)</option>
+          {% for p in categorias if not p.categorias_pai_id %}
+          <option value="{{ p.categorias_id }}">{{ p.categorias_nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Salvar Categoria</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

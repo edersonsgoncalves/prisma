@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .switch-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+  }
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #444;
+    transition: .3s;
+    border-radius: 20px;
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: var(--primary);
+  }
+  input:checked + .slider:before {
+    transform: translateX(16px);
+  }
+  .switch-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #888;
+    transition: .3s;
+  }
+  input:checked ~ .label-sim { color: var(--success); }
+  input:not(:checked) ~ .label-nao { color: white; }
+</style>
+{% endblock %}
+
+{% block title %}Nova Receita{% endblock %}
+{% block page_title %}Lançar Nova Receita{% endblock %}
+
+{% block content %}
+<div class="card max-w-2xl mx-auto">
+  <form action="/lancamentos/inserir" method="post">
+    <input type="hidden" name="tipo" value="1">
+    
+    <div class="form-group">
+      <label class="form-label">Descrição da Receita</label>
+      <input type="text" name="descricao" class="form-control" placeholder="Ex: Salário" required autofocus>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Valor</label>
+        <div class="flex items-center gap-2">
+          <span class="text-success font-bold">+ R$</span>
+          <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data</label>
+        <input type="date" name="data" class="form-control" value="{{ hoje }}" required>
+      </div>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Conta de Destino</label>
+        <select name="conta" class="form-control" required>
+          <optgroup label="Conta Corrente">
+            {% for c in contas_todas if c.tipo_conta == 1 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Cartões de Crédito">
+            {% for c in contas_todas if c.tipo_conta == 4 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Dinheiro/Carteira">
+            {% for c in contas_todas if c.tipo_conta == 2 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Investimentos">
+            {% for c in contas_todas if c.tipo_conta == 5 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Financeiro">
+            {% for c in contas_todas if c.tipo_conta == 3 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Outros">
+            {% for c in contas_todas if c.tipo_conta == 6 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Categoria</label>
+        <select name="categoria" class="form-control">
+          <option value="">Sem Categoria</option>
+          {% for cat in categorias if cat.categorias_classe in [0, 1, None] %}
+          <option value="{{ cat.categorias_id }}">
+            {% if cat.categorias_pai_id %} &nbsp;&nbsp;&nbsp;&nbsp; {{ cat.categorias_nome }} {% else %} {{ cat.categorias_nome }} {% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group mb-4">
+      <div class="flex items-center gap-2">
+        <label class="form-label mb-0" style="margin-right: 4px;">Repetir Lançamento?</label>
+        <label class="switch-wrapper">
+          <span class="switch-label label-nao">não</span>
+          <div class="switch">
+            <input type="checkbox" id="checkRepetir" name="repetir" onchange="toggleRepetir()">
+            <span class="slider"></span>
+          </div>
+          <span class="switch-label label-sim">sim</span>
+        </label>
+      </div>
+    </div>
+
+    <div id="divRepeticao" style="display: none; border: 1px dashed #444; padding: 15px; border-radius: 8px; margin-bottom: 20px; background: rgba(255,255,255,0.02);">
+      <div class="form-group">
+        <label class="form-label">Modo de Repetição</label>
+        <div class="flex gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="modo_repeticao" value="parcelado" checked onchange="toggleModoRepeticao()">
+            <span>Parcelar</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="modo_repeticao" value="recorrente" onchange="toggleModoRepeticao()">
+            <span>Recorrência</span>
+          </label>
+        </div>
+      </div>
+
+      <div id="divParcelado" class="form-grid-2">
+        <div class="form-group mb-0">
+          <label class="form-label">Número de Parcelas</label>
+          <div class="flex gap-4 items-center">
+            <input type="number" name="num_parcelas" class="form-control" min="2" max="120" value="2" style="width: 80px;">
+            
+            <div class="flex gap-4 items-center bg-dark-lighter p-2 rounded border border-gray-700">
+              <span class="form-label mb-0" style="font-size: 11px;">O valor é:</span>
+              <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                <input type="radio" name="valor_total_ou_parcela" value="total" checked> 
+                <span style="font-size: 12px;">Total</span>
+              </label>
+              <label class="flex items-center gap-2 mb-0 cursor-pointer">
+                <input type="radio" name="valor_total_ou_parcela" value="parcela"> 
+                <span style="font-size: 12px;">Parcela</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="divRecorrente" class="form-grid-2" style="display: none;">
+        <div class="form-group mb-0">
+          <label class="form-label">Frequência</label>
+          <select name="frequencia" class="form-control">
+            <option value="mensal">Mensal</option>
+            <option value="semanal">Semanal</option>
+            <option value="anual">Anual</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Ocorrências</label>
+          <input type="number" name="ocorrencias" class="form-control" min="1" max="60" value="12">
+        </div>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="form-group mb-6 flex items-center gap-2">
+      <label class="form-label mb-0" style="margin-right: 4px;">Já recebeu/efetivou hoje?</label>
+      <label class="switch-wrapper">
+        <span class="switch-label label-nao">não</span>
+        <div class="switch">
+          <input type="checkbox" id="checkEfetivado" onchange="handleEfetivadoToggle()">
+          <span class="slider"></span>
+        </div>
+        <span class="switch-label label-sim">sim</span>
+      </label>
+      <input type="hidden" name="efetivado" id="input_efetivado" value="0">
+    </div>
+
+    <div id="divDataEfetivado" class="form-group mb-6" style="display:none">
+      <label class="form-label">Data de Efetivação</label>
+      <input type="date" name="data_efetivado" class="form-control" value="{{ hoje }}">
+    </div>
+
+    <hr>
+
+    <div class="flex justify-end gap-3">
+      <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
+      <button type="submit" class="btn btn-primary">Salvar Receita</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function handleEfetivadoToggle() {
+    const isEfetivado = document.getElementById('checkEfetivado').checked;
+    document.getElementById('input_efetivado').value = isEfetivado ? "1" : "0";
+    document.getElementById('divDataEfetivado').style.display = isEfetivado ? "" : "none";
+  }
+
+  function toggleRepetir() {
+    const isRepetir = document.getElementById('checkRepetir').checked;
+    document.getElementById('divRepeticao').style.display = isRepetir ? "" : "none";
+  }
+
+  function toggleModoRepeticao() {
+    const modo = document.querySelector('input[name="modo_repeticao"]:checked').value;
+    document.getElementById('divParcelado').style.display = (modo === 'parcelado') ? "" : "none";
+    document.getElementById('divRecorrente').style.display = (modo === 'recorrente') ? "" : "none";
+  }
+</script>
+{% endblock %}
+

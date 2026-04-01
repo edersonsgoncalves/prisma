@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Contas Bancárias{% endblock %}
+{% block page_title %}Contas Bancárias{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Minhas Contas</h1>
+    <p>Gerencie suas contas correntes, poupanças e carteiras.</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modalNovaConta')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Nova Conta
+  </button>
+</div>
+
+{# Filtramos apenas o que não é cartão e agrupamos por tipo_conta #}
+{% for tipo, grupo_contas in contas | selectattr('tipo_conta', 'ne', 4) | groupby('tipo_conta') %}
+    
+    <div class="section-divider mt-8 mb-4">
+        <h2 style="font-size: 1.2rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">
+            {% if tipo == 1 %}🏦 Contas Correntes
+            {% elif tipo == 2 %}💵 Carteira / Dinheiro
+            {% elif tipo == 4 %}💳 Cartões de Crédito
+            {% elif tipo == 3 %}🏦 Financeiro
+            {% elif tipo == 5 %}💰 Investimentos
+            {% else %}📂 Outros{% endif %}
+        </h2>
+        <hr style="border: 0; border-top: 2px solid var(--border-color); margin-top: 8px;">
+    </div>
+
+    <div class="stats-grid">
+      {% for conta in grupo_contas %}
+      <div class="card flex flex-col justify-between" style="min-height: 140px;">
+        <div class="flex justify-between items-start">
+          <div>
+            <h3 style="font-size: 16px; font-weight: 700;">{{ conta.nome_conta }}</h3>
+          </div>
+          <button class="btn-icon btn-xs" onclick="openEditModal('{{ conta.conta_id }}', '{{ conta.nome_conta }}', '{{ conta.tipo_conta }}', '{{ conta.contas_limite }}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+        
+        <div class="mt-4">
+          <div class="stat-label">Saldo Atual</div>
+          <div class="stat-value {{ cor_valor(saldos.get(conta.conta_id, 0)) }}">
+            {{ formata_moeda(saldos.get(conta.conta_id, 0)) }}
+          </div>
+          {% if conta.contas_limite %}
+          <div class="stat-sub">Limite: {{ formata_moeda(conta.contas_limite) }}</div>
+          {% endif %}
+        </div>
+
+        <div class="mt-4">
+          <a href="/extrato?c={{ conta.conta_id }}" class="btn btn-ghost btn-sm w-full">Ver Extrato</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+{% else %}
+    <div class="card p-12 text-center text-muted">
+        Nenhuma conta cadastrada até o momento.
+    </div>
+{% endfor %}
+
+
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  function openEditModal(id, nome, tipo, limite) {
+    document.getElementById('formEditarConta').action = '/contas/editar/' + id;
+    document.getElementById('edit_nome').value = nome;
+    document.getElementById('edit_tipo').value = tipo;
+    document.getElementById('edit_limite').value = parseFloat(limite || 0).toFixed(2).replace('.', ',');
+    openModal('modalEditarConta');
+  }
+</script>
+{% endblock %}

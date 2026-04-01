@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-center">
+  <div>
+    <h1>Visão Geral</h1>
+    <p>Bem-vindo, {{ sessao.login }}. Veja o resumo da sua saúde financeira.</p>
+  </div>
+  <div class="flex gap-2">
+    <button id="btnResetLayout" class="btn btn-ghost btn-xs" style="display:none;" onclick="resetLayout()">Reiniciar Layout</button>
+    <button id="btnEditLayout" class="btn btn-ghost btn-sm" onclick="toggleEditLayout()">✏️ Editar Layout</button>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD CONTENT (SORTABLE) ═══ -->
+<div id="dashboard-sortable" class="dashboard-grid">
+  
+  <!-- Grid de Stats (Cards Superiores) -->
+  <div class="dash-item" data-id="stats">
+    <div class="stats-grid">
+      <!-- Saldo Total -->
+      <div class="stat-card">
+        <div class="stat-icon">🏦</div>
+        <div class="stat-label">Saldo em Contas</div>
+        <div class="stat-value">{{ formata_moeda(total_saldos) }}</div>
+        <div class="stat-sub">{{ contas | length }} contas ativas</div>
+      </div>
+      <!-- Receitas -->
+      <div class="stat-card success">
+        <div class="stat-icon">📈</div>
+        <div class="stat-label">Receitas (Efetivadas)</div>
+        <div class="stat-value text-success">{{ formata_moeda(receitas) }}</div>
+        <div class="stat-sub">Entradas confirmadas no mês</div>
+      </div>
+      <!-- Despesas Previstas -->
+      <div class="stat-card warning">
+        <div class="stat-icon">📅</div>
+        <div class="stat-label">Despesas Previstas</div>
+        <div class="stat-value text-warning">{{ formata_moeda(despesas_totais) }}</div>
+        <div class="stat-sub">Total planejado para o mês</div>
+      </div>
+      <!-- Saldo do Mês -->
+      <div class="stat-card">
+        <div class="stat-icon">⏳</div>
+        <div class="stat-label">Resultado do Mês</div>
+        <div class="stat-value text-{{ 'success' if receitas - despesas_totais > 0 else 'danger' }}">{{ formata_moeda(receitas + despesas_totais) }}</div>
+        <div class="stat-sub">Receitas - Despesas</div>
+      </div>
+      <!-- Despesas Pendentes -->
+      <div class="stat-card danger">
+        <div class="stat-icon">⏳</div>
+        <div class="stat-label">A Pagar (Pendentes)</div>
+        <div class="stat-value text-danger">{{ formata_moeda(despesas_pendentes) }}</div>
+        <div class="stat-sub">O que ainda falta pagar</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-grid-2" style="grid-template-columns: 2fr 1.2fr; gap: 1.5rem;">
+    <!-- Coluna Esquerda: Gráfico e Saldos -->
+    <div class="flex flex-col gap-6 sortable-col" id="col-left">
+      
+      <!-- Gastos por Categoria (Gráfico) -->
+      <div class="dash-item" data-id="chart">
+        <div class="card" style="height: 100%;">
+          <div class="card-header">
+            <h2 class="card-title">Gastos por Categoria</h2>
+            <div class="flex items-center gap-2">
+              <button class="btn-icon btn-xs" onclick="changeChartPeriod(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+              <span id="chartPeriodLabel" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">{{ mes_por_extenso(mes_atual, ano_atual) }}</span>
+              <button class="btn-icon btn-xs" onclick="changeChartPeriod(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+            </div>
+          </div>
+          <div style="height: 300px; position: relative; padding: 10px;">
+            <canvas id="categoryChart"></canvas>
+            <div id="chartLoader" class="flex items-center justify-center" style="display:none; position: absolute; inset: 0; background: rgba(0,0,0,0.3); border-radius: 8px;">
+               <div class="badge badge-accent">Carregando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saldos por Conta -->
+      <div class="dash-item" data-id="balances">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Saldos por Conta</h2>
+            <a href="/contas" class="btn btn-ghost btn-xs">Ver Todas</a>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Conta</th>
+                  <th class="text-right">Saldo Atual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for conta in contas %}
+                  {% if conta.tipo_conta in (1,2) %}
+                    <tr>
+                      <td>
+                        <div class="flex items-center gap-2">
+                          <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent);"></div>
+                          <a href="/extrato?c={{ conta.conta_id }}">{{ conta.nome_conta }}</a>
+                        </div>
+                      </td>
+                      <td class="text-right font-bold {{ cor_valor(saldos[conta.conta_id]) }}">
+                        {{ formata_moeda(saldos[conta.conta_id]) }}
+                      </td>
+                    </tr>
+                  {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coluna Direita: Alertas e Faturas -->
+    <div class="flex flex-col gap-6 sortable-col" id="col-right">
+      
+      <!-- Cartões de Crédito -->
+      <div class="dash-item" data-id="cards">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Cartões de Crédito</h2>
+            <a href="/faturas" class="btn btn-ghost btn-xs">Detalhes</a>
+          </div>
+          <div class="flex flex-col gap-3">
+            {% for fatura in faturas_abertas %}
+            <div class="flex justify-between items-center p-2 rounded" style="background: var(--bg-hover);">
+              <div>
+                <div style="font-size: 13px; font-weight: 600;">{{ fatura.cartao.nome_conta }}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Vence em {{ mostra_data(fatura.data_vencimento) }}</div>
+              </div>
+              <div class="text-right">
+                <div class="font-bold text-danger">{{ formata_moeda(fatura.valor_total) }}</div>
+                <div class="badge badge-warning">Aberta</div>
+              </div>
+            </div>
+            {% else %}
+            <p class="text-muted" style="font-size: 12px; text-align: center;">Nenhuma fatura aberta.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Atalhos Rápidos -->
+      <div class="dash-item" data-id="actions">
+        <div class="card">
+          <h2 class="card-title mb-4">Ações Rápidas</h2>
+          <div class="flex flex-col gap-2">
+            <a href="/lancamentos/nova-despesa" class="btn btn-ghost w-full justify-between">
+              <span>Nova Despesa</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            </a>
+            <a href="/lancamentos/nova-receita" class="btn btn-ghost w-full justify-between">
+              <span>Nova Receita</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </a>
+            <a href="/lancamentos/nova-transferencia" class="btn btn-ghost w-full justify-between">
+              <span>Transferência</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SortableJS -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  // ── CONFIGURAÇÃO DO GRÁFICO ────────────────────────
+  let currentMonth = {{ mes_atual }}; 
+  let currentYear = {{ ano_atual }}; 
+  const ctx = document.getElementById('categoryChart').getContext('2d');
+  let categoryChart;
+
+  const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+  function initChart(data) {
+    const labels = data.map(item => item.nome);
+    const dataEfetivado = data.map(item => item.efetivado);
+    const dataRestante = data.map(item => Math.max(0, item.total - item.efetivado));
+
+    if (categoryChart) categoryChart.destroy();
+
+    categoryChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Efetivado', data: dataEfetivado, backgroundColor: '#10b981', borderRadius: 4 },
+          { label: 'Pendente', data: dataRestante, backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: 4 }
+        ]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, font: { size: 10 } } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.dataset.label + ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(ctx.parsed.x)
+            }
+          }
+        },
+        scales: {
+          x: { stacked: true, grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+          y: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  async function updateChartData() {
+    document.getElementById('chartLoader').style.display = 'flex';
+    document.getElementById('chartPeriodLabel').innerText = `${monthNames[currentMonth-1]} ${currentYear}`;
+    
+    try {
+      const resp = await fetch(`/dashboard/chart-data?m=${currentMonth}&y=${currentYear}`);
+      const data = await resp.json();
+      initChart(data.gastos_por_categoria);
+    } catch (e) {
+      console.error("Erro ao carregar gráfico:", e);
+    } finally {
+      document.getElementById('chartLoader').style.display = 'none';
+    }
+  }
+
+  function changeChartPeriod(delta) {
+    currentMonth += delta;
+    if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+    if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+    updateChartData();
+  }
+
+  // Inicializa com dados injetados pelo backend no primeiro load
+  initChart({{ gastos_por_categoria | tojson | safe }});
+
+
+  // ── LAYOUT DRAGGABLE (SortableJS) ──────────────────
+  let isEditMode = false;
+  let sortables = [];
+
+  function toggleEditLayout() {
+    isEditMode = !isEditMode;
+    const btn = document.getElementById('btnEditLayout');
+    const btnReset = document.getElementById('btnResetLayout');
+    
+    if (isEditMode) {
+      btn.innerText = "✅ Salvar Layout";
+      btn.classList.add('badge-accent');
+      btnReset.style.display = 'inline-block';
+      document.getElementById('dashboard-sortable').classList.add('edit-mode');
+      enableSortable(true);
+    } else {
+      btn.innerText = "✏️ Editar Layout";
+      btn.classList.remove('badge-accent');
+      btnReset.style.display = 'none';
+      document.getElementById('dashboard-sortable').classList.remove('edit-mode');
+      enableSortable(false);
+      saveLayout();
+    }
+  }
+
+  function enableSortable(enable) {
+    if (enable) {
+      const options = {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        handle: '.dash-item',
+        onEnd: saveLayout
+      };
+      
+      // Sortable para a grid principal (Stats e o container das colunas)
+      sortables.push(new Sortable(document.getElementById('dashboard-sortable'), options));
+      // Sortable para as colunas internas
+      sortables.push(new Sortable(document.getElementById('col-left'), options));
+      sortables.push(new Sortable(document.getElementById('col-right'), options));
+    } else {
+      sortables.forEach(s => s.destroy());
+      sortables = [];
+    }
+  }
+
+  function saveLayout() {
+    const layout = {
+      main: Array.from(document.getElementById('dashboard-sortable').children).map(el => el.getAttribute('data-id') || 'grid'),
+      left: Array.from(document.getElementById('col-left').children).map(el => el.getAttribute('data-id')),
+      right: Array.from(document.getElementById('col-right').children).map(el => el.getAttribute('data-id'))
+    };
+    localStorage.setItem('dashboard_layout_v1', JSON.stringify(layout));
+  }
+
+  function loadLayout() {
+    const saved = localStorage.getItem('dashboard_layout_v1');
+    if (!saved) return;
+    try {
+      const layout = JSON.parse(saved);
+      const containers = {
+        'dashboard-sortable': layout.main,
+        'col-left': layout.left,
+        'col-right': layout.right
+      };
+
+      for (const [id, items] of Object.entries(containers)) {
+        const container = document.getElementById(id);
+        if (!container || !items) continue;
+        items.forEach(itemId => {
+          const item = container.querySelector(`[data-id="${itemId}"]`);
+          if (item) container.appendChild(item);
+        });
+      }
+    } catch (e) { console.error("Erro ao carregar layout:", e); }
+  }
+
+  function resetLayout() {
+    localStorage.removeItem('dashboard_layout_v1');
+    location.reload();
+  }
+
+  // CSS dinâmico para feedback visual no edit mode
+  const style = document.createElement('style');
+  style.innerHTML = `
+    .edit-mode .dash-item { cursor: move; outline: 2px dashed var(--accent); outline-offset: 4px; opacity: 0.8; }
+    .sortable-ghost { opacity: 0.3; transform: scale(0.95); }
+  `;
+  document.head.appendChild(style);
+
+  window.addEventListener('load', loadLayout);
+</script>
+{% endblock %}

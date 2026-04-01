@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Projetos{% endblock %}
+{% block page_title %}Meus Projetos{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Projetos</h1>
+    <p>Acompanhe gastos vinculados a projetos específicos (ex: Reforma, Viagem).</p>
+  </div>
+  <button class="btn btn-primary" onclick="openModal('modalNovoProjeto')">Novo Projeto</button>
+</div>
+
+<div class="stats-grid">
+  {% for p in projetos %}
+  <div class="card" style="border-left: 4px solid {{ p.projetos_cor or 'var(--accent)' }};">
+    <div class="flex justify-between mb-2">
+      <h3 style="font-weight: 700;">{{ p.projetos_nome }}</h3>
+      <div style="width: 16px; height: 16px; border-radius: 4px; background: {{ p.projetos_cor }};"></div>
+    </div>
+    {% if p.projetos_inicio %}
+    <p style="font-size: 12px; color: var(--text-secondary);">
+      {{ mostra_data(p.projetos_inicio) }} {% if p.projetos_fim %}até {{ mostra_data(p.projetos_fim) }}{% endif %}
+    </p>
+    {% endif %}
+    <div class="mt-4">
+      <button class="btn btn-ghost btn-xs w-full">Ver Lançamentos</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="card text-center p-8 w-full"><p class="text-muted">Nenhum projeto cadastrado.</p></div>
+  {% endfor %}
+</div>
+
+<div class="modal-backdrop" id="modalNovoProjeto">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Novo Projeto</h2>
+      <button class="modal-close" onclick="closeModal('modalNovoProjeto')">&times;</button>
+    </div>
+    <form action="/projetos/novo" method="post">
+      <div class="form-group">
+        <label class="form-label">Nome do Projeto</label>
+        <input type="text" name="nome" class="form-control" required>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Início</label>
+          <input type="date" name="inicio" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fim</label>
+          <input type="date" name="fim" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cor de Identificação</label>
+        <input type="color" name="cor" class="form-control" value="#6366f1" style="height: 40px; padding: 4px;">
+      </div>
+      <div class="flex justify-end mt-4">
+        <button type="submit" class="btn btn-primary">Criar Projeto</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

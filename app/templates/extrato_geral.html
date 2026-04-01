@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Extrato Geral{% endblock %}
+{% block page_title %}Extrato Geral das Contas{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Resumo das Contas</h1>
+    <p>Saldos e movimentações para {{ mes_por_extenso(mes, ano) }}</p>
+  </div>
+  
+  <div class="period-nav">
+    <a href="?m={{ 12 if mes == 1 else mes - 1 }}&y={{ ano - 1 if mes == 1 else ano }}" class="btn-icon btn-xs">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <span>{{ mes_por_extenso(mes, ano) }}</span>
+    <a href="?m={{ 1 if mes == 12 else mes + 1 }}&y={{ ano + 1 if mes == 12 else ano }}" class="btn-icon btn-xs">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  </div>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>Conta</th>
+          <th class="text-right">Movimentação no Mês</th>
+          <th class="text-right">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set total_mes = 0 %}
+        {% for conta in contas %}
+        {% set mov = saldos_mes.get(conta.conta_id, 0) %}
+        {# total_mes increment logic is handled by jinja2 sets #}
+        <tr>
+          <td>
+            <div class="flex items-center gap-2">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--accent);"></div>
+              <span class="font-bold">{{ conta.nome_conta }}</span>
+            </div>
+          </td>
+          <td class="text-right font-bold {{ cor_valor(mov) }}">{{ formata_moeda(mov) }}</td>
+          <td class="text-right">
+            <a href="/extrato?c={{ conta.conta_id }}&m={{ mes }}&y={{ ano }}" class="btn btn-ghost btn-xs">Ver Detalhes</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

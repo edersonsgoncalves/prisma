@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Prisma{% endblock %} — Prisma</title>
+  <meta name="description" content="Sistema de Gerenciamento de Finanças Pessoais">
+  <link rel="stylesheet" href="/static/css/main.css?v=1.1">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+
+  <!-- ═══ OVERLAY MOBILE ═══ -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">💰</div>
+      Prisma
+    </div>
+
+    <nav class="sidebar-nav">
+
+      <div class="sidebar-section">Principal</div>
+
+      <a href="/dashboard" class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard
+      </a>
+
+      <a href="/notificacoes" class="nav-item {% if '/notificacoes' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Atividades
+      </a>
+
+      <div class="sidebar-section">Finanças</div>
+
+      <a href="/extrato" class="nav-item {% if request.url.path == '/extrato' %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Extrato
+      </a>
+
+      <a href="/contas" class="nav-item {% if '/contas' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+        </svg>
+        Contas
+      </a>
+      
+      <div class="sidebar-section">Cartões</div>
+      <a href="#" class="nav-item {% if '/cartoes' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+        </svg>
+        Cartões
+      </a>
+        <a href="/faturas" class="nav-item {% if '/faturas' in request.url.path %}active{% endif %}">
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+          </svg>
+          Faturas
+        </a>
+        <a href="/importar-fatura" class="nav-item {% if '/importar-fatura' in request.url.path %}active{% endif %}">
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+          </svg>
+          Importar PDF
+        </a>
+
+      <div class="sidebar-section">Lançamentos</div>
+
+      <a href="/lancamentos/nova-despesa" class="nav-item {% if 'nova-despesa' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        Nova Despesa
+      </a>
+
+      <a href="/lancamentos/nova-receita" class="nav-item {% if 'nova-receita' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+        Nova Receita
+      </a>
+
+      <a href="/lancamentos/nova-transferencia" class="nav-item {% if 'nova-transferencia' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+        Transferência
+      </a>
+      <a href="/ofx/importar" class="nav-item {% if '/ofx/importar' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Importar OFX
+      </a>
+
+      <div class="sidebar-section">Configuração</div>
+
+      <a href="/categorias" class="nav-item {% if '/categorias' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16M4 12h8M4 18h4"/>
+        </svg>
+        Categorias
+      </a>
+
+      <a href="/projetos" class="nav-item {% if '/projetos' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        Projetos
+      </a>
+
+      <a href="/recorrencias" class="nav-item {% if '/recorrencias' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+        </svg>
+        Recorrências
+      </a>
+
+      <a href="/relatorios/categorias" class="nav-item {% if '/relatorios' in request.url.path %}active{% endif %}">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+        </svg>
+        Relatórios
+      </a>
+
+    </nav>
+
+    <div class="sidebar-footer">
+      <a href="/logout" class="nav-item" style="color: var(--danger-light);">
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sair ({{ sessao.login if sessao else '' }})
+      </a>
+    </div>
+  </aside>
+
+  <!-- ═══ CONTEÚDO PRINCIPAL ═══ -->
+  <div class="main-wrapper">
+
+    <!-- Topbar -->
+    <!-- <header class="topbar">
+      <div class="flex items-center gap-3">
+        <button class="btn-icon sidebar-toggle" onclick="toggleSidebar()" aria-label="Menu" id="menuBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <span class="topbar-title">{% block page_title %}FinOrg{% endblock %}</span>
+      </div>
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+         <a href="/lancamentos/nova-despesa" class="btn btn-primary btn-sm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Novo
+        </a> 
+      </div>
+    </header> -->
+
+    <!-- Conteúdo da página -->
+    <main class="page-content">
+      {% block content %}{% endblock %}
+    </main>
+
+  </div><!-- /main-wrapper -->
+</div><!-- /layout -->
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+  // ── Sidebar mobile ──────────────────────────────────
+  function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    sb.classList.toggle('open');
+    ov.classList.toggle('open');
+  }
+
+  // ── Toast ───────────────────────────────────────────
+  function showToast(msg, type = 'success') {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  // ── Modal helpers ───────────────────────────────────
+  function openModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  // Fechar modal clicando no backdrop
+  document.querySelectorAll('.modal-backdrop').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target === el) closeModal(el.id);
+    });
+  });
+
+  // ── Formatação de moeda (campo input) ──────────────
+  function formatCurrency(input) {
+    let val = input.value.replace(/\D/g, '');
+    val = (parseInt(val || '0') / 100).toFixed(2);
+    input.value = val.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  }
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

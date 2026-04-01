@@ -1,0 +1,983 @@
+{% extends "base.html" %}
+{% block title %}Importar Fatura PDF{% endblock %}
+{% block page_title %}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Stepper ───────────────────────────────────────────────────────────── */
+.pdf-stepper {
+  display: flex; align-items: center; margin-bottom: 28px;
+}
+.pdf-step {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 500; color: var(--text-muted);
+  white-space: nowrap;
+}
+.pdf-step.active { color: var(--text-primary); }
+.pdf-step.done   { color: var(--success); }
+.pdf-step-circle {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+  background: var(--bg-card); border: 2px solid var(--border);
+  transition: all .2s;
+}
+.pdf-step.active .pdf-step-circle { border-color: var(--accent); color: var(--accent); }
+.pdf-step.done   .pdf-step-circle { border-color: var(--success); background: rgba(16,185,129,.15); color: var(--success); }
+.pdf-step-line { flex: 1; height: 2px; background: var(--border); margin: 0 10px; min-width: 20px; }
+.pdf-step-label { display: none; }
+@media(min-width:600px){ .pdf-step-label { display: inline; } }
+
+/* ── Seções ────────────────────────────────────────────────────────────── */
+.pdf-sec { display: none; }
+.pdf-sec.active { display: block; }
+
+/* ── Drop Zone ─────────────────────────────────────────────────────────── */
+.drop-zone {
+  border: 2px dashed var(--border-active); border-radius: 14px;
+  padding: 48px 24px; text-align: center; cursor: pointer;
+  transition: all .2s; background: rgba(255,255,255,.02);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent); background: rgba(99,102,241,.06);
+}
+.drop-zone input[type=file] { display: none; }
+
+/* ── Stats ─────────────────────────────────────────────────────────────── */
+.pdf-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+.pdf-stat  { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+.pdf-stat-val { font-size: 24px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+.pdf-stat-lbl { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+
+/* ── Badges ─────────────────────────────────────────────────────────────── */
+.badge-dup   { background: rgba(239,68,68,.15);  color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+.badge-forte { background: rgba(99,102,241,.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,.25); }
+.badge-fraco { background: rgba(251,191,36,.12); color: #fbbf24; border: 1px solid rgba(251,191,36,.25); }
+.badge-novo  { background: rgba(34,197,94,.12);  color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+.badge-skip  { background: rgba(255,255,255,.04); color: var(--text-muted); border: 1px solid var(--border); }
+.score-pill  {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700;
+}
+
+/* ── Cabeçalho de grupo de portador ──────────────────────────────────── */
+.grupo-row td {
+  background: rgba(99,102,241,.06) !important;
+  font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--accent-light);
+  padding: 10px 14px !important;
+  border-top: 2px solid rgba(99,102,241,.2) !important;
+  border-bottom: 1px solid rgba(99,102,241,.15) !important;
+}
+.grupo-row td span.grupo-total {
+  float: right; color: var(--danger-light); font-family: monospace; font-size: 12px;
+}
+
+/* ── Linha de crédito ─────────────────────────────────────────────────── */
+tr.row-credito td { background: rgba(16,185,129,.03); }
+
+/* ── Compare grid modal ───────────────────────────────────────────────── */
+.cg { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 6px 14px; font-size: 12px; }
+.cg-h { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+        letter-spacing:.06em; padding-bottom:6px; border-bottom:1px solid var(--border); }
+.cg-l { color: var(--text-muted); align-self: center; }
+.cg-v { color: var(--text-primary); align-self: center; }
+.cg-v.diff { color: var(--accent-light); font-weight: 600; }
+
+/* ── Alert inline ─────────────────────────────────────────────────────── */
+.pdf-alert {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;
+}
+.pdf-alert.warn { background: rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.2); color: #fbbf24; }
+.pdf-alert.info { background: rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.2);  color: #a5b4fc; }
+.pdf-alert svg  { flex-shrink: 0; margin-top: 2px; }
+
+/* ── Progress ─────────────────────────────────────────────────────────── */
+.pdf-prog { height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.pdf-prog-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width .35s ease; }
+
+/* ── Confirmação scroll ───────────────────────────────────────────────── */
+.pdf-confirm-scroll { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+
+@media(max-width:640px){
+  .pdf-stats { grid-template-columns: repeat(2,1fr); }
+  .pdf-stepper { flex-wrap: wrap; gap: 8px; }
+  .pdf-step-line { display: none; }
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+<!-- Cabeçalho ─────────────────────────────────────────────────────────── -->
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:24px;">
+  <div>
+    <h1>Importar Fatura PDF</h1>
+    <p class="text-muted">Extraia e concilie lançamentos de faturas de cartão de crédito</p>
+  </div>
+  <a href="/faturas" class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border);">← Faturas</a>
+</div>
+
+<!-- Stepper ───────────────────────────────────────────────────────────── -->
+<div class="pdf-stepper" id="stepper">
+  <div class="pdf-step active" id="stp-1">
+    <div class="pdf-step-circle">1</div>
+    <span class="pdf-step-label">Selecionar arquivo</span>
+  </div>
+  <div class="pdf-step-line"></div>
+  <div class="pdf-step" id="stp-2">
+    <div class="pdf-step-circle">2</div>
+    <span class="pdf-step-label">Revisar lançamentos</span>
+  </div>
+  <div class="pdf-step-line"></div>
+  <div class="pdf-step" id="stp-3">
+    <div class="pdf-step-circle">3</div>
+    <span class="pdf-step-label">Confirmar</span>
+  </div>
+  <div class="pdf-step-line"></div>
+  <div class="pdf-step" id="stp-4">
+    <div class="pdf-step-circle">4</div>
+    <span class="pdf-step-label">Resultado</span>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SEÇÃO 1 — UPLOAD
+═══════════════════════════════════════════════════════════ -->
+<div class="pdf-sec active" id="sec-1">
+  <div class="card" style="padding:28px; max-width:580px; margin:0 auto;">
+
+    <div class="pdf-alert info" style="margin-bottom:20px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      Suporte atual: <strong>Santander Unique Mastercard</strong>. O PDF pode conter múltiplos portadores — todos serão extraídos e exibidos separadamente.
+    </div>
+
+    <!-- Cartão principal (conta "mãe" para associação da fatura) -->
+    <div class="form-group" style="margin-bottom:16px;">
+      <label class="form-label">Cartão principal da fatura</label>
+      <select id="selConta" class="form-control" required>
+        <option value="">— selecione o cartão titular —</option>
+        {% for c in cartoes %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+        {% endfor %}
+      </select>
+      <span style="font-size:11px; color:var(--text-muted);">Usado para vincular a fatura. Os lançamentos de adicionais serão associados ao portador correto.</span>
+    </div>
+
+    <!-- Ano override -->
+    <div class="form-group" style="margin-bottom:24px;">
+      <label class="form-label">
+        Ano da fatura
+        <span class="text-muted" style="font-weight:400; font-size:11px;">(detectado automaticamente)</span>
+      </label>
+      <input type="number" id="inputAno" class="form-control" placeholder="ex: 2026"
+             min="2000" max="2099" style="max-width:160px;">
+    </div>
+
+    <!-- Drop zone -->
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept=".pdf" onchange="onFileSelect(this.files[0])">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35; margin-bottom:14px; display:block; margin-left:auto; margin-right:auto;">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/>
+      </svg>
+      <div style="font-size:15px; font-weight:600; margin-bottom:6px;" id="dropLabel">Clique ou arraste o PDF aqui</div>
+      <div style="font-size:12px; color:var(--text-muted);">Arquivo .pdf da fatura do cartão</div>
+    </div>
+
+    <div id="uploadProgress" style="display:none; margin-top:16px;">
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:6px;" id="uploadMsg">Processando…</div>
+      <div class="pdf-prog"><div class="pdf-prog-bar" id="progBar" style="width:0%"></div></div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SEÇÃO 2 — REVISÃO
+═══════════════════════════════════════════════════════════ -->
+<div class="pdf-sec" id="sec-2">
+
+  <!-- Stats globais -->
+  <div class="pdf-stats">
+    <div class="pdf-stat">
+      <div class="pdf-stat-val" id="r-total" style="color:var(--text-primary)">—</div>
+      <div class="pdf-stat-lbl">Total</div>
+    </div>
+    <div class="pdf-stat">
+      <div class="pdf-stat-val" id="r-dup" style="color:var(--danger)">—</div>
+      <div class="pdf-stat-lbl">Duplicidades</div>
+    </div>
+    <div class="pdf-stat">
+      <div class="pdf-stat-val" id="r-match" style="color:var(--accent-light)">—</div>
+      <div class="pdf-stat-lbl">Matches</div>
+    </div>
+    <div class="pdf-stat">
+      <div class="pdf-stat-val" id="r-novo" style="color:var(--success)">—</div>
+      <div class="pdf-stat-lbl">Novos</div>
+    </div>
+  </div>
+
+  <!-- Alerta de duplicidades -->
+  <div class="pdf-alert warn" id="alertDup" style="display:none;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <span><strong>Atenção:</strong> <span id="alertDupQtd">0</span> lançamento(s) possivelmente duplicados — marcados como "ignorar" por padrão.</span>
+  </div>
+
+  <!-- Controles da tabela -->
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border); font-size:11px;"
+              onclick="selecionarPorClasse('NOVO')">Selecionar Novos</button>
+      <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border); font-size:11px;"
+              onclick="selecionarPorClasse('MATCH_FORTE')">Selecionar Matches</button>
+      <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border); font-size:11px;"
+              onclick="toggleAll(false)">Desmarcar Todos</button>
+    </div>
+    <span style="font-size:11px; color:var(--text-muted);" id="labelSelecionados"></span>
+  </div>
+
+  <!-- Tabela -->
+  <div class="card" style="padding:0; overflow:hidden; margin-bottom:16px;">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px; padding:10px 12px;">
+              <input type="checkbox" id="checkAll" onchange="toggleAll(this.checked)" title="Todos">
+            </th>
+            <th>Data</th>
+            <th>Descrição</th>
+            <th style="width:80px;">Parcela</th>
+            <th style="width:110px;">Tipo Op.</th>
+            <th style="width:140px;">Destino</th>
+            <th class="text-right" style="width:100px;">Valor</th>
+            <th style="width:110px;">Situação</th>
+            <th style="width:155px;">Ação</th>
+            <th style="width:32px;"></th>
+          </tr>
+        </thead>
+        <tbody id="tbodyRevisao">
+          <tr><td colspan="10" class="text-center text-muted" style="padding:32px;">Nenhum dado carregado.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border);" onclick="goTo(1)">← Voltar</button>
+    <button class="btn btn-primary btn-sm" onclick="goTo(3)">Revisar e confirmar →</button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SEÇÃO 3 — CONFIRMAÇÃO
+═══════════════════════════════════════════════════════════ -->
+<div class="pdf-sec" id="sec-3">
+  <div class="card" style="padding:24px; margin-bottom:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h3 style="margin:0;">Resumo da importação</h3>
+    </div>
+
+    <div class="pdf-stats" style="margin-bottom:20px;">
+      <div class="pdf-stat"><div class="pdf-stat-val" id="c-ef"  style="color:var(--accent-light)">0</div><div class="pdf-stat-lbl">Efetivar</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="c-ins" style="color:var(--success)">0</div><div class="pdf-stat-lbl">Inserir novo</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="c-ign" style="color:var(--text-muted)">0</div><div class="pdf-stat-lbl">Ignorar</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="c-val" style="color:var(--danger-light); font-size:16px;">R$0</div><div class="pdf-stat-lbl">Total débitos</div></div>
+    </div>
+
+    <!-- Resumo por portador -->
+    <div id="resumoPortadores" style="margin-bottom:20px;"></div>
+
+    <!-- Tabela de confirmação scrollável -->
+    <div class="pdf-confirm-scroll">
+      <table style="width:100%;">
+        <thead>
+          <tr style="position:sticky; top:0; background:var(--bg-surface); z-index:1;">
+            <th style="padding:8px 12px; font-size:11px;">Portador</th>
+            <th style="padding:8px 12px; font-size:11px;">Data</th>
+            <th style="padding:8px 12px; font-size:11px;">Descrição</th>
+            <th style="padding:8px 12px; font-size:11px;" class="text-right">Valor</th>
+            <th style="padding:8px 12px; font-size:11px;">Ação</th>
+            <th style="padding:8px 12px; font-size:11px;">Match com</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyConfirm"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex; justify-content:space-between;">
+    <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border);" onclick="goTo(2)">← Revisar</button>
+    <button class="btn btn-primary btn-sm" id="btnConfirmar" onclick="confirmarImportacao()">
+      ✓ Confirmar importação
+    </button>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     SEÇÃO 4 — RESULTADO
+═══════════════════════════════════════════════════════════ -->
+<div class="pdf-sec" id="sec-4">
+  <div class="card" style="padding:40px 24px; text-align:center; max-width:480px; margin:0 auto;">
+    <div id="resultIcon" style="font-size:48px; margin-bottom:16px;">✅</div>
+    <h2 id="resultTitle" style="margin-bottom:8px;">Importação concluída!</h2>
+    <p id="resultMsg" class="text-muted" style="margin-bottom:28px;"></p>
+
+    <div class="pdf-stats" style="margin-bottom:28px;">
+      <div class="pdf-stat"><div class="pdf-stat-val" id="res-ef"  style="color:var(--accent-light)">0</div><div class="pdf-stat-lbl">Efetivados</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="res-ins" style="color:var(--success)">0</div><div class="pdf-stat-lbl">Inseridos</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="res-ign" style="color:var(--text-muted)">0</div><div class="pdf-stat-lbl">Ignorados</div></div>
+      <div class="pdf-stat"><div class="pdf-stat-val" id="res-err" style="color:var(--danger)">0</div><div class="pdf-stat-lbl">Erros</div></div>
+    </div>
+
+    <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+      <a id="btnVerFatura" href="/faturas" class="btn btn-primary btn-sm">Ver Fatura</a>
+      <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border);" onclick="reiniciar()">Importar outro PDF</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — Detalhe do match
+═══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════
+     MODAL — Novos Portadores
+     ═══════════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="modalPortadores">
+  <div class="modal" style="max-width:650px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Novos portadores detectados</h2>
+      <button class="modal-close" onclick="closeModal('modalPortadores')">&times;</button>
+    </div>
+    <div style="padding:16px 24px;">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        Identificamos cartões adicionais neste PDF que ainda não estão no seu cadastro. 
+        Configure como as transferências para eles devem ser tratadas:
+      </p>
+      <div class="table-wrapper" style="border:1px solid var(--border); border-radius:8px;">
+        <table style="width:100%;">
+          <thead>
+            <tr style="font-size:10px; text-transform:uppercase; letter-spacing:.05em;">
+              <th style="padding:8px 12px;">Nome no PDF</th>
+              <th style="padding:8px 12px;">Final</th>
+              <th style="padding:8px 12px;">Apelido</th>
+              <th style="padding:8px 12px;">Conta p/ Reembolso</th>
+              <th style="padding:8px 12px; text-align:center;">Titular?</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyPortadoresNovos"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding:16px 24px; display:flex; justify-content:flex-end; gap:12px;">
+      <button class="btn btn-sm" style="background:var(--bg-card); border:1px solid var(--border);" 
+              onclick="closeModal('modalPortadores')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="salvarConfigPortadores()">
+        Continuar para revisão
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="modalMatch">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalMatchTitulo">Comparar lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalMatch')">&times;</button>
+    </div>
+    <div style="padding:0 24px 4px;" id="modalMatchBody"></div>
+    <div style="padding:16px 24px; display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid var(--border); margin-top:16px;" id="modalMatchActions"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ═══════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════
+let faturaLancamentos = [];   // lista de ResultadoConciliacao serializado
+let portadoresDetectados = []; // lista de adicionalInfo
+let contaId = null;
+let faturaIdGerada = null;
+
+// Lista de contas para transferências
+const CONTAS_TUDO = [
+  {% for c in contas_todas %}
+    { id: {{ c.conta_id }}, nome: "{{ c.nome_conta }}", tipo: {{ c.tipo_conta|default(0) }} },
+  {% endfor %}
+];
+
+// ═══════════════════════════════════════════════════════════
+// STEPPER
+// ═══════════════════════════════════════════════════════════
+function goTo(n) {
+  document.querySelectorAll('.pdf-sec').forEach((s, i) => s.classList.toggle('active', i === n - 1));
+  document.querySelectorAll('.pdf-step').forEach((s, i) => {
+    s.classList.remove('active', 'done');
+    if (i + 1 < n)  s.classList.add('done');
+    if (i + 1 === n) s.classList.add('active');
+  });
+  if (n === 3) buildConfirm();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ═══════════════════════════════════════════════════════════
+// DRAG & DROP
+// ═══════════════════════════════════════════════════════════
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) onFileSelect(f);
+});
+
+function onFileSelect(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+    showToast('Selecione um arquivo .pdf', 'error'); return;
+  }
+  contaId = document.getElementById('selConta').value;
+  if (!contaId) { showToast('Selecione o cartão antes de enviar.', 'error'); return; }
+  document.getElementById('dropLabel').textContent = file.name;
+  uploadPDF(file);
+}
+
+// ═══════════════════════════════════════════════════════════
+// UPLOAD
+// ═══════════════════════════════════════════════════════════
+async function uploadPDF(file) {
+  const progWrap  = document.getElementById('uploadProgress');
+  const progBar   = document.getElementById('progBar');
+  const uploadMsg = document.getElementById('uploadMsg');
+  progWrap.style.display = 'block';
+  progBar.style.background = 'var(--accent)';
+
+  let pct = 0;
+  const timer = setInterval(() => { pct = Math.min(pct + 4, 85); progBar.style.width = pct + '%'; }, 130);
+
+  const form = new FormData();
+  form.append('arquivo', file);
+  form.append('conta_id', contaId);
+  const ano = document.getElementById('inputAno').value;
+  if (ano) form.append('ano_override', ano);
+
+  try {
+    uploadMsg.textContent = 'Extraindo lançamentos do PDF…';
+    const res = await fetch('/importar-fatura/upload', { method: 'POST', body: form });
+    clearInterval(timer);
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Erro ${res.status}`);
+    }
+
+    const data = await res.json();
+    progBar.style.width = '100%';
+    uploadMsg.textContent = `${data.total} lançamentos encontrados.`;
+    faturaLancamentos = data.lancamentos;
+    portadoresDetectados = data.adicionais || [];
+    
+    // Se houver portadores novos, precisamos que o usuário configure/confirme
+    const temNovos = portadoresDetectados.some(p => p.is_novo);
+    if (temNovos) {
+      abrirModalPortadores();
+    } else {
+      renderRevisao();
+      setTimeout(() => goTo(2), 400);
+    }
+
+  } catch (e) {
+    clearInterval(timer);
+    progBar.style.width = '100%';
+    progBar.style.background = 'var(--danger)';
+    uploadMsg.textContent = '❌ ' + e.message;
+    showToast(e.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+const fmtD = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const fmtM = v => v != null ? 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—';
+const esc  = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function pill(score, cls) {
+  const map = {
+    DUPLICIDADE: ['badge-dup',   '⚠ Duplicidade'],
+    MATCH_FORTE: ['badge-forte', '⚡ Match Forte'],
+    MATCH_FRACO: ['badge-fraco', '~ Match Fraco'],
+    NOVO:        ['badge-novo',  '+ Novo'],
+  };
+  const [klass, label] = map[cls] || ['badge-skip', cls || '?'];
+  return `<span class="score-pill ${klass}">${label}</span>`;
+}
+
+function acaoPadrao(t) {
+  if (t.classificacao === 'DUPLICIDADE') return 'ignorar';
+  if (t.classificacao === 'MATCH_FORTE') return 'efetivar';
+  if (t.classificacao === 'MATCH_FRACO') return 'efetivar';
+  return 'inserir';
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDERIZA REVISÃO
+// ═══════════════════════════════════════════════════════════
+function renderRevisao() {
+  const tbody = document.getElementById('tbodyRevisao');
+
+  // Agrupa por portador
+  const grupos = {};
+  faturaLancamentos.forEach((t, i) => {
+    if (!t.acao) t.acao = acaoPadrao(t);
+    const key = `${t.cartao_nome} ···${t.cartao_final}`;
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push({ t, i });
+  });
+
+  let dup = 0, match = 0, novo = 0;
+  let html = '';
+
+  Object.entries(grupos).forEach(([portador, items]) => {
+    const totalPortador = items.reduce((s, { t }) => t.tipo === 'D' ? s + (t.valor || 0) : s, 0);
+
+    html += `<tr class="grupo-row"><td colspan="10">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px; vertical-align:middle; opacity:.7;">
+        <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+      </svg>${esc(portador)}
+      <span class="grupo-total">-${fmtM(totalPortador)}</span>
+    </td></tr>`;
+
+    items.forEach(({ t, i }) => {
+      if (t.classificacao === 'DUPLICIDADE') dup++;
+      else if (t.classificacao !== 'NOVO')   match++;
+      else novo++;
+
+      const isCredito = t.tipo === 'C';
+      const cor       = isCredito ? 'var(--success-light)' : 'var(--danger-light)';
+      const sinal     = isCredito ? '+' : '-';
+      const parc      = t.parcela_atual ? `${t.parcela_atual}/${t.parcela_total}` : '—';
+      const temMatch  = t.operacao_id != null;
+      const checked   = t.acao !== 'ignorar' ? 'checked' : '';
+      
+      // Select Tipo Operação
+      const selTipo = `
+        <select class="form-control" style="font-size:11px; padding:2px 4px; height:auto; width:100%;"
+                onchange="setTipoOp(${i}, this.value)">
+          <option value="3" ${t.tipo_operacao==3?'selected':''}>Despesa</option>
+          <option value="1" ${t.tipo_operacao==1?'selected':''}>Receita</option>
+          <option value="4" ${t.tipo_operacao==4?'selected':''}>Transferência</option>
+        </select>`;
+
+      // Select Conta Destino
+      const selDest = `
+        <select class="form-control select-dest" id="dest-${i}" 
+                style="font-size:11px; padding:2px 4px; height:auto; width:100%; display:${t.tipo_operacao==4?'block':'none'};"
+                onchange="setDestino(${i}, this.value)">
+          <option value="">— destino —</option>
+          ${CONTAS_TUDO.map(c => `<option value="${c.id}" ${t.conta_destino==c.id?'selected':''}>${esc(c.nome)}</option>`).join('')}
+        </select>`;
+
+      html += `<tr id="tr-${i}" class="${isCredito ? 'row-credito' : ''}">
+        <td style="padding:8px 12px;">
+          <input type="checkbox" class="row-ck" data-idx="${i}" ${checked}
+                 onchange="onCheckChange(${i}, this.checked)">
+        </td>
+        <td style="font-size:12px; font-family:monospace; white-space:nowrap;">${fmtD(t.data)}</td>
+        <td>
+          <div style="font-size:13px; font-weight:500;">${esc(t.descricao)}</div>
+          ${temMatch ? `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">match: ${esc(t.operacao_descricao||'').substring(0,40)}</div>` : ''}
+        </td>
+        <td style="font-size:11px; color:var(--text-muted); white-space:nowrap;">${parc}</td>
+        <td>${selTipo}</td>
+        <td>${selDest}</td>
+        <td class="text-right" style="font-family:monospace; font-weight:600; color:${cor}; white-space:nowrap;">
+          ${sinal}${fmtM(t.valor)}
+        </td>
+        <td>${pill(t.score, t.classificacao)}</td>
+        <td>
+          <select class="form-control" style="font-size:11px; padding:3px 6px; height:auto;"
+                  onchange="setAcao(${i}, this.value)">
+            <option value="efetivar" ${t.acao==='efetivar'?'selected':''} ${!temMatch?'disabled':''}>✓ Efetivar</option>
+            <option value="inserir"  ${t.acao==='inserir' ?'selected':''}>+ Inserir novo</option>
+            <option value="ignorar"  ${t.acao==='ignorar' ?'selected':''}>— Ignorar</option>
+          </select>
+        </td>
+        <td style="text-align:center;">
+          ${temMatch ? `<button class="btn-icon" style="width:26px;height:26px;" onclick="abrirModal(${i})" title="Ver comparação">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>` : ''}
+        </td>
+      </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
+
+  const total = faturaLancamentos.length;
+  document.getElementById('r-total').textContent = total;
+  document.getElementById('r-dup').textContent   = dup;
+  document.getElementById('r-match').textContent = match;
+  document.getElementById('r-novo').textContent  = novo;
+
+  if (dup > 0) {
+    document.getElementById('alertDup').style.display = 'flex';
+    document.getElementById('alertDupQtd').textContent = dup;
+  }
+  atualizarLabelSelecionados();
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTROLE DE AÇÕES
+// ═══════════════════════════════════════════════════════════
+function setAcao(i, acao) {
+  faturaLancamentos[i].acao = acao;
+  const cb = document.querySelector(`#tr-${i} .row-ck`);
+  if (cb) cb.checked = (acao !== 'ignorar');
+  atualizarLabelSelecionados();
+}
+
+function onCheckChange(i, checked) {
+  const t = faturaLancamentos[i];
+  if (!checked) {
+    t.acao = 'ignorar';
+  } else {
+    t.acao = t.operacao_id ? 'efetivar' : 'inserir';
+  }
+  const sel = document.querySelector(`#tr-${i} select`);
+  if (sel) sel.value = t.acao;
+  atualizarLabelSelecionados();
+}
+
+function toggleAll(checked) {
+  faturaLancamentos.forEach((t, i) => {
+    document.querySelector(`#tr-${i} .row-ck`).checked = checked;
+    onCheckChange(i, checked);
+  });
+}
+
+function selecionarPorClasse(cls) {
+  faturaLancamentos.forEach((t, i) => {
+    const ativo = t.classificacao === cls;
+    document.querySelector(`#tr-${i} .row-ck`).checked = ativo;
+    onCheckChange(i, ativo);
+  });
+}
+
+function atualizarLabelSelecionados() {
+  const sel = faturaLancamentos.filter(t => t.acao !== 'ignorar').length;
+  document.getElementById('labelSelecionados').textContent =
+    sel > 0 ? `${sel} selecionado(s)` : '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODAL DE MATCH
+// ═══════════════════════════════════════════════════════════
+function abrirModal(i) {
+  const t = faturaLancamentos[i];
+  const titulos = {
+    DUPLICIDADE: '⚠ Possível Duplicidade',
+    MATCH_FORTE: '⚡ Match Forte',
+    MATCH_FRACO: '~ Match Fraco',
+  };
+  document.getElementById('modalMatchTitulo').textContent = titulos[t.classificacao] || 'Detalhes';
+
+  const dv = Math.abs((t.valor||0) - Math.abs(t.operacao_valor||0)) < 0.02;
+  const dd = t.data === t.operacao_data;
+
+  document.getElementById('modalMatchBody').innerHTML = `
+    <div style="margin-bottom:14px;">${pill(t.score, t.classificacao)}
+      <span class="text-muted" style="font-size:11px; margin-left:8px;">score ${t.score}</span>
+    </div>
+    <div class="cg">
+      <div class="cg-h"></div><div class="cg-h">PDF / Fatura</div><div class="cg-h">No banco</div>
+      <div class="cg-l">Data</div>
+      <div class="cg-v">${fmtD(t.data)}</div>
+      <div class="cg-v ${dd?'':'diff'}">${fmtD(t.operacao_data)}</div>
+      <div class="cg-l">Valor</div>
+      <div class="cg-v">${fmtM(t.valor)}</div>
+      <div class="cg-v ${dv?'':'diff'}">${fmtM(t.operacao_valor)}</div>
+      <div class="cg-l">Descrição</div>
+      <div class="cg-v">${esc((t.descricao||'').substring(0,36))}</div>
+      <div class="cg-v">${esc((t.operacao_descricao||'—').substring(0,36))}</div>
+      <div class="cg-l">Parcela</div>
+      <div class="cg-v">${t.parcela_atual ? t.parcela_atual+'/'+t.parcela_total : '—'}</div>
+      <div class="cg-v">—</div>
+      <div class="cg-l">Portador</div>
+      <div class="cg-v">${esc(t.cartao_nome)} ···${esc(t.cartao_final)}</div>
+      <div class="cg-v" style="font-size:10px; color:var(--text-muted);">ID #${t.operacao_id}</div>
+    </div>`;
+
+  const acts = document.getElementById('modalMatchActions');
+  if (t.classificacao === 'DUPLICIDADE') {
+    acts.innerHTML = `
+      <button class="btn btn-sm" style="background:var(--bg-card);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'ignorar')">Ignorar (recomendado)</button>
+      <button class="btn btn-sm" style="border:1px solid var(--danger); color:var(--danger-light);"
+              onclick="setAcaoModal(${i},'efetivar')">Forçar efetivação</button>`;
+  } else {
+    acts.innerHTML = `
+      <button class="btn btn-sm" style="background:var(--bg-card);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'ignorar')">Ignorar</button>
+      <button class="btn btn-sm" style="background:var(--bg-card);border:1px solid var(--border);"
+              onclick="setAcaoModal(${i},'inserir')">Inserir como novo</button>
+      <button class="btn btn-primary btn-sm"
+              onclick="setAcaoModal(${i},'efetivar')">✓ Confirmar match</button>`;
+  }
+  openModal('modalMatch');
+}
+
+function setAcaoModal(i, acao) {
+  setAcao(i, acao);
+  const sel = document.querySelector(`#tr-${i} .acao-sel`);
+  if (sel) sel.value = acao;
+  const cb  = document.querySelector(`#tr-${i} .row-ck`);
+  if (cb)  cb.checked = (acao !== 'ignorar');
+  closeModal('modalMatch');
+}
+
+// ═══════════════════════════════════════════════════════════
+// GESTÃO DE PORTADORES
+// ═══════════════════════════════════════════════════════════
+function abrirModalPortadores() {
+  const tbody = document.getElementById('tbodyPortadoresNovos');
+  let html = '';
+  portadoresDetectados.filter(p => p.is_novo).forEach((p, i) => {
+    html += `<tr>
+      <td style="padding:10px 12px; font-size:13px; font-weight:600;">${esc(p.adicional_nome)}</td>
+      <td style="padding:10px 12px; font-family:monospace; font-size:12px;">···${esc(p.cartao_final)}</td>
+      <td style="padding:8px 12px;">
+        <input type="text" class="form-control" style="font-size:12px; padding:4px 8px; height:auto;"
+               id="port-apelido-${i}" placeholder="Ex: Murilo" value="${esc(p.adicional_nome.split(' ')[0])}">
+      </td>
+      <td style="padding:8px 12px;">
+        <select class="form-control" style="font-size:11px; padding:4px 8px; height:auto;"
+                id="port-conta-${i}">
+          <option value="">— nenhuma (Despesa) —</option>
+          ${CONTAS_TUDO.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}
+        </select>
+      </td>
+      <td style="padding:10px 12px; text-align:center;">
+        <input type="checkbox" id="port-titular-${i}">
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
+  openModal('modalPortadores');
+}
+
+function salvarConfigPortadores() {
+  portadoresDetectados.filter(p => p.is_novo).forEach((p, i) => {
+    p.apelido = document.getElementById(`port-apelido-${i}`).value;
+    const cid = document.getElementById(`port-conta-${i}`).value;
+    p.conta_vinculada = cid ? parseInt(cid) : null;
+    p.titular = document.getElementById(`port-titular-${i}`).checked;
+  });
+
+  // Atualiza tipos_operacao dos lançamentos baseados nos portadores
+  const mapa = {};
+  portadoresDetectados.forEach(p => mapa[p.cartao_final] = p);
+  
+  faturaLancamentos.forEach(l => {
+    const p = mapa[l.cartao_final];
+    if (p && p.conta_vinculada) {
+      l.tipo_operacao = 4; // Transferência
+      l.conta_destino = p.conta_vinculada;
+    } else {
+      l.tipo_operacao = (l.tipo === 'C' ? 1 : 3);
+    }
+  });
+
+  closeModal('modalPortadores');
+  renderRevisao();
+  setTimeout(() => goTo(2), 400);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONTROLES DE REVISÃO (Tipo e Destino)
+// ═══════════════════════════════════════════════════════════
+function setTipoOp(i, val) {
+  const t = faturaLancamentos[i];
+  t.tipo_operacao = parseInt(val);
+  const selDest = document.getElementById(`dest-${i}`);
+  if (selDest) {
+    selDest.style.display = (t.tipo_operacao == 4) ? 'block' : 'none';
+  }
+}
+
+function setDestino(i, val) {
+  faturaLancamentos[i].conta_destino = val ? parseInt(val) : null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// BUILD CONFIRMAÇÃO (seção 3)
+// ═══════════════════════════════════════════════════════════
+function buildConfirm() {
+  let ef = 0, ins = 0, ign = 0, totalDebitos = 0;
+
+  // Resumo por portador
+  const portadores = {};
+  faturaLancamentos.forEach(t => {
+    const key = `${t.cartao_nome} ···${t.cartao_final}`;
+    if (!portadores[key]) portadores[key] = { deb: 0, cred: 0, count: 0 };
+    if (t.acao !== 'ignorar') {
+      if (t.tipo === 'D') portadores[key].deb += t.valor || 0;
+      else portadores[key].cred += t.valor || 0;
+      portadores[key].count++;
+    }
+  });
+
+  let resumoHtml = '<div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px;">';
+  Object.entries(portadores).forEach(([portador, info]) => {
+    resumoHtml += `<div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:10px 14px; min-width:180px;">
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;">${esc(portador)}</div>
+      <div style="font-size:13px; color:var(--danger-light); font-family:monospace;">-${fmtM(info.deb)}</div>
+      ${info.cred > 0 ? `<div style="font-size:12px; color:var(--success-light); font-family:monospace;">+${fmtM(info.cred)}</div>` : ''}
+      <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">${info.count} lançamento(s)</div>
+    </div>`;
+  });
+  resumoHtml += '</div>';
+  document.getElementById('resumoPortadores').innerHTML = resumoHtml;
+
+  // Tabela de confirmação
+  const rows = faturaLancamentos.map(t => {
+    const a = t.acao;
+    if (a === 'efetivar') ef++;
+    else if (a === 'inserir') { ins++; if (t.tipo === 'D') totalDebitos += t.valor || 0; }
+    else ign++;
+
+    const acaoLabel = {
+      efetivar: '<span class="score-pill badge-forte" style="font-size:10px;">✓ Efetivar</span>',
+      inserir:  '<span class="score-pill badge-novo"  style="font-size:10px;">+ Inserir</span>',
+      ignorar:  '<span class="score-pill badge-skip"  style="font-size:10px;">— Ignorar</span>',
+    }[a] || a;
+
+    const cor   = t.tipo === 'C' ? 'var(--success-light)' : 'var(--danger-light)';
+    const sinal = t.tipo === 'C' ? '+' : '-';
+
+    return `<tr style="${a === 'ignorar' ? 'opacity:.4;' : ''}">
+      <td style="padding:7px 12px; font-size:11px; color:var(--text-muted); white-space:nowrap;">
+        ${esc(t.cartao_nome)} ···${esc(t.cartao_final)}
+      </td>
+      <td style="padding:7px 12px; font-size:11px; font-family:monospace; white-space:nowrap;">${fmtD(t.data)}</td>
+      <td style="padding:7px 12px; font-size:12px;">
+        ${esc(t.descricao.substring(0,40))}
+        ${t.parcela_atual ? `<span class="text-muted" style="font-size:10px;"> (${t.parcela_atual}/${t.parcela_total})</span>` : ''}
+      </td>
+      <td style="padding:7px 12px; font-family:monospace; font-size:12px; text-align:right; color:${cor}; white-space:nowrap;">${sinal}${fmtM(t.valor)}</td>
+      <td style="padding:7px 12px;">${acaoLabel}</td>
+      <td style="padding:7px 12px; font-size:10px; color:var(--text-muted);">
+        ${t.operacao_id ? `#${t.operacao_id} ${esc((t.operacao_descricao||'').substring(0,24))}` : '—'}
+      </td>
+    </tr>`;
+  });
+
+  document.getElementById('tbodyConfirm').innerHTML = rows.join('');
+  document.getElementById('c-ef').textContent  = ef;
+  document.getElementById('c-ins').textContent = ins;
+  document.getElementById('c-ign').textContent = ign;
+  document.getElementById('c-val').textContent = fmtM(totalDebitos);
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONFIRMAR IMPORTAÇÃO
+// ═══════════════════════════════════════════════════════════
+async function confirmarImportacao() {
+  const btn = document.getElementById('btnConfirmar');
+  btn.disabled = true;
+  btn.textContent = 'Processando…';
+
+  const decisoes = {};
+  faturaLancamentos.forEach(t => { decisoes[t.hash_id] = t.acao || 'ignorar'; });
+
+  try {
+    const lancamentosPayload = faturaLancamentos.map(t => ({
+      hash_id:         t.hash_id,
+      acao:            t.acao || 'ignorar',
+      data:            t.data,
+      descricao:       t.descricao,
+      valor:           t.valor,
+      tipo:            t.tipo,
+      cartao_nome:     t.cartao_nome,
+      cartao_final:    t.cartao_final,
+      parcela_atual:   t.parcela_atual,
+      parcela_total:   t.parcela_total,
+      operacao_id:     t.operacao_id,
+    }));
+
+    const res = await fetch('/importar-fatura/confirmar-completo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        conta_id: parseInt(contaId), 
+        adicionais: portadoresDetectados.filter(p => p.is_novo),
+        lancamentos: lancamentosPayload 
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Erro ${res.status}`);
+    }
+
+    const data = await res.json();
+    faturaIdGerada = data.fatura_id || null;
+
+    document.getElementById('res-ef').textContent  = data.efetivados || 0;
+    document.getElementById('res-ins').textContent = data.inseridos  || 0;
+    document.getElementById('res-ign').textContent = data.ignorados  || 0;
+    document.getElementById('res-err').textContent = data.erros      || 0;
+    document.getElementById('resultMsg').textContent =
+      `${data.inseridos || 0} lançamentos inseridos, ${data.efetivados || 0} efetivados.`;
+
+    if (faturaIdGerada) {
+      document.getElementById('btnVerFatura').href = `/faturas/${faturaIdGerada}`;
+    }
+
+    goTo(4);
+    showToast('Importação concluída!', 'success');
+
+  } catch (e) {
+    showToast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ Confirmar importação';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// REINICIAR
+// ═══════════════════════════════════════════════════════════
+function reiniciar() {
+  faturaLancamentos = [];
+  contaId = null;
+  faturaIdGerada = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('dropLabel').textContent = 'Clique ou arraste o PDF aqui';
+  document.getElementById('uploadProgress').style.display = 'none';
+  document.getElementById('progBar').style.width = '0%';
+  document.getElementById('alertDup').style.display = 'none';
+  document.getElementById('tbodyRevisao').innerHTML =
+    '<tr><td colspan="10" class="text-center text-muted" style="padding:32px;">Nenhum dado carregado.</td></tr>';
+  goTo(1);
+}
+</script>
+{% endblock %}

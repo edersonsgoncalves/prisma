@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Totais por Categoria{% endblock %}
+{% block page_title %}Relatórios: Gastos por Categoria{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Totais por Categoria</h1>
+    <p>Veja onde você está gastando mais em {{ mes_por_extenso(mes, ano) }}</p>
+  </div>
+  
+  <div class="period-nav">
+    <a href="?m={{ 12 if mes == 1 else mes - 1 }}&y={{ ano - 1 if mes == 1 else ano }}" class="btn-icon btn-xs">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </a>
+    <span>{{ mes_por_extenso(mes, ano) }}</span>
+    <a href="?m={{ 1 if mes == 12 else mes + 1 }}&y={{ ano + 1 if mes == 12 else ano }}" class="btn-icon btn-xs">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+  </div>
+</div>
+
+<div class="form-grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Ranking de Gastos</h2>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th class="text-right">Total Acumulado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for nome, total in totais %}
+          <tr>
+            <td class="font-bold">{{ nome }}</td>
+            <td class="text-right {{ cor_valor(total) }}">{{ formata_moeda(total) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center p-6 text-muted">Sem dados para este período.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card flex items-center justify-center">
+    <div class="text-center p-8">
+      <div class="mb-4" style="font-size: 40px;">📊</div>
+      <h2 style="font-weight: 700;">Em breve: Gráficos Interativos</h2>
+      <p class="text-muted">Estamos integrando Chart.js para uma visualização ainda mais poderosa dos seus dados.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
