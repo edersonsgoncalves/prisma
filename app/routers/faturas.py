@@ -423,7 +423,7 @@ async def pagar_fatura(
         operacoes_descricao=descricao,
         operacoes_conta=conta_origem,
         operacoes_valor=-valor_float,
-        operacoes_tipo="4", # Transferência
+        operacoes_tipo=4, # Transferência
         operacoes_efetivado=1,
         operacoes_data_efetivado=datetime.now(),
         operacoes_validacao=1
@@ -434,6 +434,7 @@ async def pagar_fatura(
         operacoes_data_lancamento=dt_operacao,
         operacoes_descricao=descricao,
         operacoes_conta=conta_cartao_id,
+        operacoes_valor=valor_float,
         operacoes_fatura=fatura.fatura_id, # Vincula à fatura
         operacoes_tipo=0, # Pagamento de Fatura (TipoEspecial)
         operacoes_efetivado=1,
@@ -520,7 +521,7 @@ async def converter_em_transferencia(
             parcela.operacoes_valor = -valor_abs
             valor_espelho = valor_abs
 
-        parcela.operacoes_tipo = "4"
+        parcela.operacoes_tipo = 4
         parcela.operacoes_categoria = None
         # Preserva grupo_id original (série de origem) ou atribui o novo grupo
         if not parcela.operacoes_grupo_id:
@@ -532,7 +533,7 @@ async def converter_em_transferencia(
             operacoes_descricao=parcela.operacoes_descricao,
             operacoes_conta=conta_destino_id,
             operacoes_valor=valor_espelho,
-            operacoes_tipo="4",
+            operacoes_tipo=4,
             operacoes_parcela=parcela.operacoes_parcela,
             operacoes_efetivado=parcela.operacoes_efetivado,
             operacoes_data_efetivado=parcela.operacoes_data_efetivado,

@@ -127,7 +127,7 @@ async def inserir_transferencia(
             operacoes_descricao=descricao,
             operacoes_conta=conta,
             operacoes_valor=-abs(curr_valor_f),
-            operacoes_tipo="4",
+            operacoes_tipo=4,
             operacoes_fatura=curr_fat_saida,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
@@ -141,7 +141,7 @@ async def inserir_transferencia(
             operacoes_descricao=descricao,
             operacoes_conta=conta_destino,
             operacoes_valor=abs(curr_valor_f),
-            operacoes_tipo="4",
+            operacoes_tipo=4,
             operacoes_fatura=curr_fat_entrada,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
@@ -214,7 +214,7 @@ async def editar_transferencia(
     # Lógica de Efetivação
     dt_efetivado_val = None
     if efetivado:
-        dt_efetivado_val = datetime.fromisoformat(data_efetivado) if data_efetivado else datetime.now()
+        dt_efetivado_val = datetime.fromisoformat(data_efetivado) if data_efetivado else None
 
     # Captura faturas antigas para recalcular depois
     faturas_para_recalcular = set()

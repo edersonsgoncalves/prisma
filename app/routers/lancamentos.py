@@ -766,7 +766,7 @@ async def converter_para_transferencia(
         operacoes_descricao=nova_descricao,
         operacoes_conta=conta_destino_id,
         operacoes_valor=valor_original if int(op.operacoes_tipo) == 3 else -valor_original,
-        operacoes_tipo="4",
+        operacoes_tipo=4,
         operacoes_efetivado=op.operacoes_efetivado,
         operacoes_data_efetivado=op.operacoes_data_efetivado,
         operacoes_validacao=1,
@@ -783,7 +783,7 @@ async def converter_para_transferencia(
         op.operacoes_valor = -valor_original
         op_espelho.operacoes_valor = valor_original
 
-    op.operacoes_tipo = "4"
+    op.operacoes_tipo = 4
     op.operacoes_categoria = None # Transferência não tem categoria
     op.operacoes_grupo_id = grupo_id
 
