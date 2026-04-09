@@ -4,25 +4,19 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Gemini Code Review
-        uses: google-gemini/gemini-review-action@v1 # Exemplo de Action para o Gemini
+      - name: PR Agent Action
+        uses: Codium-ai/pr-agent@main
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Se você gerou a chave no Google AI Studio, use esta linha:
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          prompt: |
-            Você é um revisor sênior auxiliando no projeto Prisma (Pri$ma).
-            Analise o diff da PR e foque em:
-            1. Boas práticas de Python (PEP 8).
-            2. Segurança em conexões Docker/MySQL.
-            3. Sugestões de melhoria para o sistema de finanças.
-            Responda em Português com um tom prestativo e direto.
+          # Configurações de comportamento
+          PR_REVIWER.EXTRA_INSTRUCTIONS: "Você é um revisor sênior auxiliando no projeto Prisma (Pri$ma). Analise o diff da PR e foque em: 1. Boas práticas de Python (PEP 8). 2. Segurança em conexões Docker/MySQL. 3. Sugestões de melhoria para o sistema de finanças. Responda em Português com um tom prestativo e direto."
