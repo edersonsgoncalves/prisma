@@ -1,6 +1,5 @@
-name: Continuous Deployment
+name: Deploy Prisma via Tailscale
 
-# Gatilho: Executa sempre que algo entra na branch 'main' via Push ou Merge de PR
 on:
   push:
     branches: [ "main" ]
@@ -9,18 +8,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
+      - name: Conectar ao Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
 
-      - name: Deploy via SSH no Raspberry Pi
+      - name: Executar Script de Update no Servidor
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.SSH_HOST }}      # Seu IP 100.x.y.z salvo nos Secrets
+          username: ${{ secrets.SSH_USER }}    # Seu usuário 'rbp' salvo nos Secrets
+          key: ${{ secrets.SSH_PRIVATE_KEY }} # Sua chave SSH salva nos Secrets
           port: 22
           script: |
-            cd /home/${{ secrets.SSH_USER }}/seu-projeto
-            git pull origin main
-            docker-compose up -d --build
-            echo "Deploy finalizado com sucesso!"
+            # Executa o script usando o caminho absoluto que você confirmou
+            /bin/bash /var/www/html/Prisma/scripts/update.sh
