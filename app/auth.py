@@ -22,6 +22,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 SECRET_KEY   = os.getenv('APP_SECRET_KEY', 'dev-secret-troque-em-producao')
 COOKIE_NAME  = os.getenv('SESSION_COOKIE_NAME', 'finorg_session')
 MAX_AGE_SEC  = 60 * 60 * 8   # 8 horas
+COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
 
 _serializer  = URLSafeTimedSerializer(SECRET_KEY)
 pwd_context  = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -41,7 +42,7 @@ def criar_sessao(response, usuario_id: int, usuario_login: str) -> None:
         max_age=MAX_AGE_SEC,
         httponly=True,
         samesite="lax",
-        secure=False,   # True se usar HTTPS
+        secure=COOKIE_SECURE,
     )
 
 
