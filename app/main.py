@@ -32,6 +32,7 @@ from app.routers.pdf_fatura import router as pdf_fatura_router
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 BASE_DIR = Path(__file__).resolve().parent
+APP_DEBUG = os.getenv("APP_DEBUG", "false").lower() in {"1", "true", "yes", "on"}
 
 # Cria tabela de usuários se não existir (as demais já existem)
 Base.metadata.create_all(bind=engine, tables=[Usuario.__table__])
@@ -42,7 +43,7 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    debug=True,
+    debug=APP_DEBUG,
 )
 
 # ── Arquivos estáticos ─────────────────────────────

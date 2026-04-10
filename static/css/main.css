@@ -272,27 +272,6 @@ textarea {
   border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Kebab Menu Styles */
-.dropdown-kebab {
-  position: relative;
-  display: inline-block;
-}
-
-.kebab-btn {
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  padding: 5px;
-  border-radius: 4px;
-  transition: 0.2s;
-}
-
-.kebab-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
-}
-
 .dropdown-content {
   display: none;
   position: absolute;
@@ -328,9 +307,6 @@ textarea {
   color: #fff;
 }
 
-.dropdown-kebab:hover .dropdown-content {
-  display: block;
-}
 
 /* Checkbox styling */
 .checkbox-custom {
@@ -821,7 +797,6 @@ select.form-control {
   overflow: hidden;
 }
 
-.dropdown-kebab:hover .dropdown-content,
 .dropdown-kebab:focus-within .dropdown-content {
   display: flex;
   flex-direction: column;

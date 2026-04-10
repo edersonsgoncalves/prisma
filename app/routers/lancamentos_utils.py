@@ -1,4 +1,5 @@
 from datetime import date
+from calendar import monthrange
 from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -44,8 +45,12 @@ def get_or_create_fatura(db: Session, cartao_id: int, data_original: date) -> in
     if fatura:
         return fatura.fatura_id
 
-    vencimento = date(ano_ref, mes_ref, dia_vencimento)
-    fechamento = date(ano_ref, mes_ref, dia_fechamento)
+    ultimo_dia_mes = monthrange(ano_ref, mes_ref)[1]
+    dia_vencimento_ajustado = max(1, min(dia_vencimento, ultimo_dia_mes))
+    dia_fechamento_ajustado = max(1, min(dia_fechamento, ultimo_dia_mes))
+
+    vencimento = date(ano_ref, mes_ref, dia_vencimento_ajustado)
+    fechamento = date(ano_ref, mes_ref, dia_fechamento_ajustado)
     
     nova_fatura = FaturaCartao(
         conta_id=cartao_id,

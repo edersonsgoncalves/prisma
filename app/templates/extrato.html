@@ -442,7 +442,7 @@
                   <button type="button"
                     data-id="{{ op.operacoes_id }}"
                     data-tipo="{{ op.operacoes_tipo }}"
-                    data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                    data-transf-rel="{{ 'true' if op.operacoes_transf_rel else 'false' }}"
                     data-parcela="{{ op.operacoes_parcela or '' }}"
                     data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
                     onclick="openEditOpModal(this)">Editar</button>
@@ -451,7 +451,7 @@
                   <button type="button"
                     data-id="{{ op.operacoes_id }}"
                     data-tipo="{{ op.operacoes_tipo }}"
-                    data-transf-rel="{{ op.operacoes_transf_rel or '' }}"
+                    data-transf-rel="{{ 'true' if op.operacoes_transf_rel else 'false' }}"
                     data-parcela="{{ op.operacoes_parcela or '' }}"
                     data-recorrencia="{{ op.operacoes_recorrencia or '' }}"
                     onclick="openEditOpModal(this)">Editar</button>
@@ -796,91 +796,54 @@
 
     <div class="flex justify-end gap-3">
       <a href="/dashboard" class="btn btn-ghost">Cancelar</a>
-      <button type="submit" class="btn btn-primary">Realizar Transferência</button>
-    </div>
-  </form>
-  </div>
-</div>
-
-<!-- Modal Editar Lançamento (Inteligente) -->
-<div class="modal-backdrop" id="modalEditarLancamento">
+      <button type="submit" class="btn btn-primary">Realiz<!-- Modal Editar Receita / Despesa -->
+<div class="modal-backdrop" id="modalEditarRD">
   <div class="modal">
     <div class="modal-header">
-      <h2 class="modal-title" id="editModalTitle">Editar Lançamento</h2>
-      <button class="modal-close" onclick="closeModal('modalEditarLancamento')">&times;</button>
+      <h2 class="modal-title" id="editRDTitle">Editar Lançamento</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarRD')">&times;</button>
     </div>
-
-    <!-- Indicador de carregamento -->
-    <div id="editModalLoading" class="flex justify-center p-6" style="display:none!important">
-      <span class="text-muted">Carregando...</span>
+    <div id="editRDLoading" class="flex justify-center p-6" style="display:none">
+       <span class="text-muted">Carregando...</span>
     </div>
-
-    <!-- Seção: Receita / Despesa -->
-    <form id="formEditarOpRD" method="post" style="display:none">
+    <form id="formEditarRD" method="post">
       <input type="hidden" name="escopo" id="edit_escopo_rd" value="so_este">
       <div class="form-group">
         <label class="form-label">Conta</label>
-        <select name="conta" id="edit_conta" class="form-control" required>
-          <optgroup label="Conta Corrente">
-            {% for c in contas_todas if c.tipo_conta == 1 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Cartões de Crédito">
-            {% for c in contas_todas if c.tipo_conta == 4 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Dinheiro/Carteira">
-            {% for c in contas_todas if c.tipo_conta == 2 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Investimentos">
-            {% for c in contas_todas if c.tipo_conta == 5 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Financeiro">
-            {% for c in contas_todas if c.tipo_conta == 3 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-            {% endfor %}
-          </optgroup>
-          <optgroup label="Outros">
-            {% for c in contas_todas if c.tipo_conta == 6 %}
-            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
-            {% endfor %}
-          </optgroup>
+        <select name="conta" id="edit_rd_conta" class="form-control" required>
+          {% for c in contas_todas %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }} ({{ tipos_conta_map.get(c.tipo_conta) }})</option>
+          {% endfor %}
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">Tipo</label>
         <div class="flex gap-4">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" id="edit_tipo_receita" value="1" onchange="filterCategories('edit', this.value)"> Receita
+            <input type="radio" name="tipo" id="edit_rd_tipo_receita" value="1" onchange="filterCategories('edit_rd', this.value)"> Receita
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="tipo" id="edit_tipo_despesa" value="3" onchange="filterCategories('edit', this.value)"> Despesa
+            <input type="radio" name="tipo" id="edit_rd_tipo_despesa" value="3" onchange="filterCategories('edit_rd', this.value)"> Despesa
           </label>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Descrição</label>
-        <input type="text" name="descricao" id="edit_desc" class="form-control" required>
+        <input type="text" name="descricao" id="edit_rd_desc" class="form-control" required>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Valor</label>
-          <input type="text" name="valor" id="edit_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+          <input type="text" name="valor" id="edit_rd_valor" class="form-control" onkeyup="formatCurrency(this)" required>
         </div>
         <div class="form-group">
           <label class="form-label">Data</label>
-          <input type="date" name="data" id="edit_data" class="form-control" required>
+          <input type="date" name="data" id="edit_rd_data" class="form-control" required>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Categoria</label>
-        <select name="categoria" id="edit_cat" class="form-control">
+        <select name="categoria" id="edit_rd_cat" class="form-control">
           <option value="">Sem Categoria</option>
           {% for cat in categorias %}
           <option value="{{ cat.categorias_id }}" data-classe="{{ cat.categorias_classe }}">
@@ -889,76 +852,66 @@
           {% endfor %}
         </select>
       </div>
-      <!-- Efetivado -->
       <div class="form-group">
         <label class="form-label">Status</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="edit_efetivado_check" onchange="toggleDataEfetivado('edit')">
+            <input type="checkbox" id="edit_rd_efetivado_check" onchange="toggleDataEfetivado('edit_rd')">
             <span>Já efetivado</span>
           </label>
-          <div id="edit_data_efetivado_wrap" style="display:none">
+          <div id="edit_rd_data_efetivado_wrap" style="display:none">
             <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
-            <input type="date" name="data_efetivado" id="edit_data_efetivado" class="form-control">
+            <input type="date" name="data_efetivado" id="edit_rd_data_efetivado" class="form-control">
           </div>
         </div>
-        <input type="hidden" name="efetivado" id="edit_efetivado_val" value="0">
+        <input type="hidden" name="efetivado" id="edit_rd_efetivado_val" value="0">
       </div>
-      <!-- Escopo (parcelado/recorrente) -->
-      <div id="edit_escopo_section_rd" class="form-group" style="display:none">
+      <div id="edit_rd_escopo_section" class="form-group" style="display:none">
         <label class="form-label">Alterar lançamentos</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo" value="so_este" onchange="document.getElementById('edit_escopo_rd').value=this.value"> Apenas este
+            <input type="radio" name="escopo_rd_radio" value="so_este" onchange="document.getElementById('edit_escopo_rd').value=this.value"> Apenas este
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo" value="subsequentes" checked onchange="document.getElementById('edit_escopo_rd').value=this.value"> Este e todos os subsequentes
+            <input type="radio" name="escopo_rd_radio" value="subsequentes" checked onchange="document.getElementById('edit_escopo_rd').value=this.value"> Este e subsequentes
           </label>
         </div>
       </div>
       <div class="flex justify-end mt-4 gap-2">
-        <button type="button" class="btn btn-ghost btn-sm" id="btnShowConverter" onclick="toggleConverter()">Converter em Transferência</button>
-        <button type="submit" class="btn btn-primary">Atualizar</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnRDToTransf" onclick="toggleConverterRD()">Converter em Transferência</button>
+        <button type="submit" class="btn btn-primary">Salvar Alterações</button>
       </div>
 
-      <!-- Área de Conversão (Escondida) -->
-      <div id="divConverter" style="display:none; margin-top:15px; padding:15px; border:1px dashed var(--primary); border-radius:8px; background:rgba(99,102,241,0.05);">
+      <div id="divRDConverter" style="display:none; margin-top:15px; padding:15px; border:1px dashed var(--primary); border-radius:8px; background:rgba(99,102,241,0.05);">
         <h4 style="margin-top:0; font-size:13px; color:var(--primary);">Converter para Transferência</h4>
-        <p class="text-muted" style="font-size:11px; margin-bottom:10px;">Isso transformará este lançamento em uma transferência e criará o par correspondente na conta destino.</p>
-        <div class="form-group" id="groupConvertConta">
-          <label class="form-label" id="labelConvertConta">Conta de Destino</label>
-          <select id="convert_conta_destino" class="form-control">
+        <div class="form-group">
+          <label class="form-label" id="labelRDConvertConta">Conta de Destino</label>
+          <select id="rd_convert_destino" class="form-control">
             <option value="">Selecione...</option>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Investimentos">
-              {% for c in contas_todas if c.tipo_conta == 5 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Investimentos)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Financeiro">
-              {% for c in contas_todas if c.tipo_conta == 3 or c.tipo_conta == 6 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-              {% endfor %}
-            </optgroup>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="flex justify-end">
-          <button type="button" class="btn btn-primary btn-sm" onclick="executarConversao()">Confirmar Conversão</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="executarConversaoRD()">Confirmar</button>
         </div>
       </div>
     </form>
+  </div>
+</div>
 
-    <!-- Seção: Transferência -->
-    <form id="formEditarTransf" method="post" style="display:none">
+<!-- Modal Editar Transferência -->
+<div class="modal-backdrop" id="modalEditarTransf">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Editar Transferência</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarTransf')">&times;</button>
+    </div>
+    <div id="editTransfLoading" class="flex justify-center p-6" style="display:none">
+       <span class="text-muted">Carregando...</span>
+    </div>
+    <form id="formEditarTransf" method="post">
       <input type="hidden" name="escopo" id="edit_escopo_transf" value="so_este">
       <div class="form-group">
         <label class="form-label">Descrição</label>
@@ -978,55 +931,20 @@
         <div class="form-group">
           <label class="form-label">Conta Origem</label>
           <select name="conta_origem" id="edit_transf_origem" class="form-control" required>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Financeiro">
-              {% for c in contas_todas if c.tipo_conta == 3 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-              {% endfor %}
-            </optgroup>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Conta Destino</label>
           <select name="conta_destino" id="edit_transf_destino" class="form-control" required>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Financeiro">
-              {% for c in contas_todas if c.tipo_conta == 3 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-              {% endfor %}
-            </optgroup>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
       </div>
-      <!-- Efetivado (transferência) -->
       <div class="form-group">
         <label class="form-label">Status</label>
         <div class="flex flex-col gap-2">
@@ -1041,121 +959,95 @@
         </div>
         <input type="hidden" name="efetivado" id="edit_transf_efetivado_val" value="0">
       </div>
-      <!-- Escopo (transferência) -->
-      <div id="edit_escopo_section_transf" class="form-group" style="display:none">
+      <div id="edit_transf_escopo_section" class="form-group" style="display:none">
         <label class="form-label">Alterar lançamentos</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo_radio_transf" value="so_este" onchange="document.getElementById('edit_escopo_transf').value=this.value"> Apenas este
+            <input type="radio" name="escopo_transf_radio" value="so_este" onchange="document.getElementById('edit_escopo_transf').value=this.value"> Apenas este
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo_radio_transf" value="subsequentes" checked onchange="document.getElementById('edit_escopo_transf').value=this.value"> Este e todos os subsequentes
+            <input type="radio" name="escopo_transf_radio" value="subsequentes" checked onchange="document.getElementById('edit_escopo_transf').value=this.value"> Este e subsequentes
           </label>
         </div>
       </div>
       <div class="flex justify-end mt-4">
-        <button type="submit" class="btn btn-primary">Atualizar Transferência</button>
+        <button type="submit" class="btn btn-primary">Salvar Transferência</button>
       </div>
     </form>
-    
-    <!-- Seção: Pagamento de Fatura -->
-    <form id="formEditarPagFatura" method="post" style="display:none">
-      <input type="hidden" name="escopo" id="edit_escopo_pag_fatura" value="so_este">
+  </div>
+</div>
+
+<!-- Modal Editar Pagamento de Cartão -->
+<div class="modal-backdrop" id="modalEditarPagFatura">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Editar Pagamento de Cartão</h2>
+      <button class="modal-close" onclick="closeModal('modalEditarPagFatura')">&times;</button>
+    </div>
+    <div id="editPFTableLoading" class="flex justify-center p-6" style="display:none">
+       <span class="text-muted">Carregando...</span>
+    </div>
+    <form id="formEditarPagFatura" method="post">
+      <input type="hidden" name="escopo" id="edit_escopo_pf" value="so_este">
       <div class="form-group">
         <label class="form-label">Descrição</label>
-        <input type="text" name="descricao" id="edit_pag_fatura_desc" class="form-control" required>
+        <input type="text" name="descricao" id="edit_pf_desc" class="form-control" required>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
           <label class="form-label">Valor</label>
-          <input type="text" name="valor" id="edit_pag_fatura_valor" class="form-control" onkeyup="formatCurrency(this)" required>
+          <input type="text" name="valor" id="edit_pf_valor" class="form-control" onkeyup="formatCurrency(this)" required>
         </div>
         <div class="form-group">
           <label class="form-label">Data</label>
-          <input type="date" name="data" id="edit_pag_fatura_data" class="form-control" required>
+          <input type="date" name="data" id="edit_pf_data" class="form-control" required>
         </div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
-          <label class="form-label">Conta Origem</label>
-          <select name="conta_origem" id="edit_pag_fatura_origem" class="form-control" required>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Financeiro">
-              {% for c in contas_todas if c.tipo_conta == 3 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-              {% endfor %}
-            </optgroup>
+          <label class="form-label">Conta Origem (Pagadora)</label>
+          <select name="conta_origem" id="edit_pf_origem" class="form-control" required>
+            {% for c in contas_todas %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Conta Destino</label>
-          <select name="conta_destino" id="edit_pag_fatura_destino" class="form-control" required>
-            <optgroup label="Conta Corrente">
-              {% for c in contas_todas if c.tipo_conta == 1 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Conta Corrente)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Cartões de Crédito">
-              {% for c in contas_todas if c.tipo_conta == 4 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Cartão de Crédito)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Dinheiro/Carteira">
-              {% for c in contas_todas if c.tipo_conta == 2 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Dinheiro)</option>
-              {% endfor %}
-            </optgroup>
-            <optgroup label="Financeiro">
-              {% for c in contas_todas if c.tipo_conta == 3 %}
-              <option value="{{ c.conta_id }}">{{ c.nome_conta }} (Financeiro)</option>
-              {% endfor %}
-            </optgroup>
+          <label class="form-label">Conta Destino (Cartão)</label>
+          <select name="conta_destino" id="edit_pf_destino" class="form-control" required>
+            {% for c in contas_todas if c.tipo_conta == 4 %}
+            <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+            {% endfor %}
           </select>
         </div>
       </div>
-      <!-- Efetivado (transferência) -->
       <div class="form-group">
         <label class="form-label">Status</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="edit_pag_fatura_efetivado_check" onchange="toggleDataEfetivado('edit_pag_fatura')">
+            <input type="checkbox" id="edit_pf_efetivado_check" onchange="toggleDataEfetivado('edit_pf')">
             <span>Já efetivado</span>
           </label>
-          <div id="edit_pag_fatura_data_efetivado_wrap" style="display:none">
+          <div id="edit_pf_data_efetivado_wrap" style="display:none">
             <label class="form-label" style="font-size:11px;">Data de Efetivação</label>
-            <input type="date" name="data_efetivado" id="edit_pag_fatura_data_efetivado" class="form-control">
+            <input type="date" name="data_efetivado" id="edit_pf_data_efetivado" class="form-control">
           </div>
         </div>
-        <input type="hidden" name="efetivado" id="edit_pag_fatura_efetivado_val" value="0">
+        <input type="hidden" name="efetivado" id="edit_pf_efetivado_val" value="0">
       </div>
-      <!-- Escopo (pagamento fatura) -->
-      <div id="edit_escopo_section_pag_fatura" class="form-group" style="display:none">
+      <div id="edit_pf_escopo_section" class="form-group" style="display:none">
         <label class="form-label">Alterar lançamentos</label>
         <div class="flex flex-col gap-2">
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo_radio_pf" value="so_este" onchange="document.getElementById('edit_escopo_pag_fatura').value=this.value"> Apenas este
+            <input type="radio" name="escopo_pf_radio" value="so_este" onchange="document.getElementById('edit_escopo_pf').value=this.value"> Apenas este
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="escopo_radio_pf" value="subsequentes" checked onchange="document.getElementById('edit_escopo_pag_fatura').value=this.value"> Este e todos os subsequentes
+            <input type="radio" name="escopo_pf_radio" value="subsequentes" checked onchange="document.getElementById('edit_escopo_pf').value=this.value"> Este e subsequentes
           </label>
         </div>
       </div>
       <div class="flex justify-end mt-4">
-        <button type="submit" class="btn btn-primary">Atualizar Pagamento</button>
+        <button type="submit" class="btn btn-primary">Salvar Pagamento</button>
       </div>
     </form>
 
@@ -1269,191 +1161,203 @@
   async function openEditOpModal(btn) {
     const d = btn.dataset;
     const opId = d.id;
-    let titulo = "";
+    const tipo = parseInt(d.tipo);
+    const isTransfRel = (d.transfRel === 'true');
 
-    if (d.tipo == "0" && d.transfRel) {
-      titulo = "Editar Pagamento de Fatura";
-    } else if (d.tipo == "4" && d.transfRel){
-      titulo = "Editar Transferência";
-    } else {
-      titulo = "Editar Lançamento";
+    // Módulo de Investimentos (Futuro) - Tipo 2
+    if (tipo === 2) {
+      alert("Módulo de Investimentos em breve!");
+      /*
+      // Estrutura placeholder para implementação futura
+      openModal('modalEditarInvestimento');
+      fetch(`/investimentos/editar/${opId}`)...
+      */
+      return;
     }
 
-    document.getElementById('editModalTitle').innerText = titulo;
-    document.getElementById('editModalLoading').style.display = 'flex';
-    document.getElementById('formEditarOpRD').style.display = 'none';
-    document.getElementById('formEditarTransf').style.display = 'none';
-    document.getElementById('formEditarPagFatura').style.display = 'none';
-
-    // Reset da área de conversão
-    const divConv = document.getElementById('divConverter');
-    if(divConv) divConv.style.display = 'none';
-    const btnConv = document.getElementById('btnShowConverter');
-    if(btnConv) btnConv.innerText = 'Converter em Transferência';
-
-    openModal('modalEditarLancamento');
-
-    try {
-      const resp = await fetch(`/lancamentos/editar/${opId}`);
-      const data = await resp.json();
-
-      if (data.tipo == 0 && data.transf_rel) {
-        // === PAGAMENTO FATURA ===
-        const form = document.getElementById('formEditarPagFatura');
-        form.action = `/lancamentos/editar-pagamento-fatura/${opId}`;
-        document.getElementById('edit_pag_fatura_desc').value = data.descricao || '';
-        document.getElementById('edit_pag_fatura_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('edit_pag_fatura_data').value = data.data || '';
-        document.getElementById('edit_pag_fatura_origem').value = data.conta || '';
-        document.getElementById('edit_pag_fatura_destino').value = data.conta_destino || '';
-        _setEfetivado('edit_pag_fatura', data.efetivado, data.data_efetivado, data.data);
-        
-        // Exibe escopo se for série
-        const escSectionPf = document.getElementById('edit_escopo_section_pag_fatura');
-        if (data.parcela || data.recorrencia || data.grupo_id) {
-            escSectionPf.style.display = '';
-            document.getElementById('edit_escopo_pag_fatura').value = 'so_este';
-            form.querySelectorAll('[name="escopo_radio_pf"]').forEach(r => r.checked = (r.value === 'so_este'));
-        } else {
-            escSectionPf.style.display = 'none';
-        }
-        form.style.display = '';
-      } else if (data.tipo == 4 && data.transf_rel) {
-        // === TRANSFERÊNCIA ===
-        const form = document.getElementById('formEditarTransf');
-        form.action = `/lancamentos/editar-transferencia/${opId}`;
-        document.getElementById('edit_transf_desc').value = data.descricao || '';
-        document.getElementById('edit_transf_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('edit_transf_data').value = data.data || '';
-        document.getElementById('edit_transf_origem').value = data.conta || '';
-        document.getElementById('edit_transf_destino').value = data.conta_destino || '';
-        _setEfetivado('edit_transf', data.efetivado, data.data_efetivado, data.data);
-
-        // Exibe escopo se for série
-        const escSectionTransf = document.getElementById('edit_escopo_section_transf');
-        if (data.parcela || data.recorrencia || data.grupo_id) {
-            escSectionTransf.style.display = '';
-            document.getElementById('edit_escopo_transf').value = 'so_este';
-            form.querySelectorAll('[name="escopo_radio_transf"]').forEach(r => r.checked = (r.value === 'so_este'));
-        } else {
-            escSectionTransf.style.display = 'none';
-        }
-        form.style.display = '';
-      } else {
-        // === RECEITA / DESPESA ===
-        const form = document.getElementById('formEditarOpRD');
-        form.action = `/lancamentos/editar/${opId}`;
-        document.getElementById('edit_desc').value = data.descricao || '';
-        document.getElementById('edit_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('edit_data').value = data.data || '';
-        document.getElementById('edit_cat').value = data.categoria || '';
-        document.getElementById('edit_conta').value = data.conta || '';
-        if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
-        else document.getElementById('edit_tipo_despesa').checked = true;
-        
-        // Filtra as categorias com base no tipo carregado
-        filterCategories('edit', data.tipo);
-        
-        // Garante que a categoria carregada continue selecionada (se válida)
-        document.getElementById('edit_cat').value = data.categoria || '';
-
-        _setEfetivado('edit', data.efetivado, data.data_efetivado, data.data);
-
-        // Escopo: mostrar se parcelado ou recorrente
-        const escopoSection = document.getElementById('edit_escopo_section_rd');
-        if (data.parcela || data.recorrencia || data.grupo_id) {
-          escopoSection.style.display = '';
-          form.querySelectorAll('[name="escopo"]').forEach(r => { r.checked = (r.value === 'so_este'); });
-          document.getElementById('edit_escopo_rd').value = 'so_este';
-        } else {
-          escopoSection.style.display = 'none';
-          document.getElementById('edit_escopo_rd').value = 'so_este';
-        }
-        form.style.display = '';
-      }
-    } catch(e) {
-      console.error('Erro ao carregar lançamento:', e);
-    } finally {
-      document.getElementById('editModalLoading').style.display = 'none';
+    if (tipo === 0 && isTransfRel) {
+      openEditPagFatura(opId);
+    } else if (tipo === 4 && isTransfRel) {
+      openEditTransf(opId);
+    } else {
+      openEditRD(opId, tipo);
     }
   }
 
-  function toggleConverter() {
-    const div = document.getElementById('divConverter');
-    const btn = document.getElementById('btnShowConverter');
-    if (div.style.display === 'none') {
-      const isReceita = document.getElementById('edit_tipo_receita').checked;
-      const label = document.getElementById('labelConvertConta');
-      if (isReceita) {
-        label.innerText = 'Conta de Origem (de onde veio o dinheiro)';
+  async function openEditRD(id, tipo) {
+    const modal = document.getElementById('modalEditarRD');
+    const form = document.getElementById('formEditarRD');
+    const loading = document.getElementById('editRDLoading');
+    const title = document.getElementById('editRDTitle');
+
+    title.innerText = (tipo == 1) ? 'Editar Receita' : 'Editar Despesa';
+    loading.style.display = 'flex';
+    form.style.display = 'none';
+    document.getElementById('divRDConverter').style.display = 'none';
+    document.getElementById('btnRDToTransf').innerText = 'Converter em Transferência';
+    
+    openModal('modalEditarRD');
+
+    try {
+      const resp = await fetch(`/lancamentos/editar/${id}`);
+      const data = await resp.json();
+
+      form.action = `/lancamentos/editar/${id}`;
+      document.getElementById('edit_rd_desc').value = data.descricao || '';
+      document.getElementById('edit_rd_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('edit_rd_data').value = data.data || '';
+      document.getElementById('edit_rd_conta').value = data.conta || '';
+      
+      if (data.tipo == 1) document.getElementById('edit_rd_tipo_receita').checked = true;
+      else document.getElementById('edit_rd_tipo_despesa').checked = true;
+
+      filterCategories('edit_rd', data.tipo);
+      document.getElementById('edit_rd_cat').value = data.categoria || '';
+
+      _setEfetivado('edit_rd', data.efetivado, data.data_efetivado, data.data);
+
+      const escSection = document.getElementById('edit_rd_escopo_section');
+      if (data.parcela || data.recorrencia || data.grupo_id) {
+        escSection.style.display = '';
+        document.getElementById('edit_escopo_rd').value = 'so_este';
+        form.querySelectorAll('[name="escopo_rd_radio"]').forEach(r => r.checked = (r.value === 'so_este'));
       } else {
-        label.innerText = 'Conta de Destino (para onde foi o dinheiro)';
+        escSection.style.display = 'none';
       }
+
+      form.style.display = '';
+    } catch(e) { console.error(e); }
+    finally { loading.style.display = 'none'; }
+  }
+
+  async function openEditTransf(id) {
+    const modal = document.getElementById('modalEditarTransf');
+    const form = document.getElementById('formEditarTransf');
+    const loading = document.getElementById('editTransfLoading');
+
+    loading.style.display = 'flex';
+    form.style.display = 'none';
+    openModal('modalEditarTransf');
+
+    try {
+      const resp = await fetch(`/lancamentos/editar/${id}`);
+      const data = await resp.json();
+
+      form.action = `/lancamentos/editar-transferencia/${id}`;
+      document.getElementById('edit_transf_desc').value = data.descricao || '';
+      document.getElementById('edit_transf_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('edit_transf_data').value = data.data || '';
+      document.getElementById('edit_transf_origem').value = data.conta || '';
+      document.getElementById('edit_transf_destino').value = data.conta_destino || '';
+
+      _setEfetivado('edit_transf', data.efetivado, data.data_efetivado, data.data);
+
+      const escSection = document.getElementById('edit_transf_escopo_section');
+      if (data.parcela || data.recorrencia || data.grupo_id) {
+        escSection.style.display = '';
+        document.getElementById('edit_escopo_transf').value = 'so_este';
+        form.querySelectorAll('[name="escopo_transf_radio"]').forEach(r => r.checked = (r.value === 'so_este'));
+      } else {
+        escSection.style.display = 'none';
+      }
+      form.style.display = '';
+    } catch(e) { console.error(e); }
+    finally { loading.style.display = 'none'; }
+  }
+
+  async function openEditPagFatura(id) {
+    const modal = document.getElementById('modalEditarPagFatura');
+    const form = document.getElementById('formEditarPagFatura');
+    const loading = document.getElementById('editPFTableLoading');
+
+    loading.style.display = 'flex';
+    form.style.display = 'none';
+    openModal('modalEditarPagFatura');
+
+    try {
+      const resp = await fetch(`/lancamentos/editar/${id}`);
+      const data = await resp.json();
+
+      form.action = `/lancamentos/editar-pagamento-fatura/${id}`;
+      document.getElementById('edit_pf_desc').value = data.descricao || '';
+      document.getElementById('edit_pf_valor').value = parseFloat(data.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('edit_pf_data').value = data.data || '';
+      document.getElementById('edit_pf_origem').value = data.conta || '';
+      document.getElementById('edit_pf_destino').value = data.conta_destino || '';
+
+      _setEfetivado('edit_pf', data.efetivado, data.data_efetivado, data.data);
+
+      const escSection = document.getElementById('edit_pf_escopo_section');
+      if (data.parcela || data.recorrencia || data.grupo_id) {
+        escSection.style.display = '';
+        document.getElementById('edit_escopo_pf').value = 'so_este';
+        form.querySelectorAll('[name="escopo_pf_radio"]').forEach(r => r.checked = (r.value === 'so_este'));
+      } else {
+        escSection.style.display = 'none';
+      }
+      form.style.display = '';
+    } catch(e) { console.error(e); }
+    finally { loading.style.display = 'none'; }
+  }
+
+  function toggleConverterRD() {
+    const div = document.getElementById('divRDConverter');
+    const btn = document.getElementById('btnRDToTransf');
+    if (div.style.display === 'none') {
+      const isReceita = document.getElementById('edit_rd_tipo_receita').checked;
+      document.getElementById('labelRDConvertConta').innerText = isReceita ? 'Origem do Dinheiro' : 'Destino do Dinheiro';
       div.style.display = 'block';
-      btn.innerText = 'Cancelar Conversão';
+      btn.innerText = 'Cancelar';
     } else {
       div.style.display = 'none';
       btn.innerText = 'Converter em Transferência';
     }
   }
 
-  async function executarConversao() {
-    const opId = document.getElementById('formEditarOpRD').action.split('/').pop();
-    const contaDestino = document.getElementById('convert_conta_destino').value;
-
-    if (!contaDestino) {
-      alert('Selecione a conta de destino.');
-      return;
-    }
-
-    if (!confirm('Deseja realmente converter este lançamento em uma transferência?')) return;
+  async function executarConversaoRD() {
+    const form = document.getElementById('formEditarRD');
+    const opId = form.action.split('/').pop();
+    const contaDestino = document.getElementById('rd_convert_destino').value;
+    if (!contaDestino) return alert('Selecione uma conta.');
+    if (!confirm('Deseja converter em transferência?')) return;
 
     const fd = new FormData();
     fd.append('conta_destino_id', contaDestino);
 
     try {
-      const resp = await fetch(`/lancamentos/converter-para-transferencia/${opId}`, {
-        method: 'POST',
-        body: fd
-      });
+      const resp = await fetch(`/lancamentos/converter-para-transferencia/${opId}`, { method: 'POST', body: fd });
       const data = await resp.json();
-      if (data.sucesso) {
-        window.location.reload();
-      } else {
-        alert('Erro ao converter: ' + (data.erro || 'Erro desconhecido'));
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Erro na requisição.');
-    }
+      if (data.sucesso) window.location.reload();
+      else alert('Erro: ' + data.erro);
+    } catch (e) { console.error(e); }
   }
 
   function openDuplicateModal(btn) {
     const d = btn.dataset;
-    const modal = document.getElementById('modalEditarLancamento');
-    const title = modal.querySelector('.modal-title');
+    const modal = document.getElementById('modalEditarRD');
+    const form = document.getElementById('formEditarRD');
+    const title = document.getElementById('editRDTitle');
 
     title.innerText = 'Duplicar Lançamento';
-    document.getElementById('editModalLoading').style.display = 'none';
-    document.getElementById('formEditarTransf').style.display = 'none';
-
-    const form = document.getElementById('formEditarOpRD');
+    document.getElementById('editRDLoading').style.display = 'none';
+    document.getElementById('divRDConverter').style.display = 'none';
+    
     form.action = '/lancamentos/inserir';
-    document.getElementById('edit_escopo_section_rd').style.display = 'none';
+    document.getElementById('edit_rd_escopo_section').style.display = 'none';
     document.getElementById('edit_escopo_rd').value = 'so_este';
-    _setEfetivado('edit', 0, null);
+    
+    document.getElementById('edit_rd_desc').value = d.desc + ' (Cópia)';
+    document.getElementById('edit_rd_valor').value = Math.abs(parseFloat(d.valor)).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    document.getElementById('edit_rd_data').value = d.data;
+    document.getElementById('edit_rd_cat').value = d.cat || '';
+    document.getElementById('edit_rd_conta').value = d.conta || '';
 
-    document.getElementById('edit_desc').value = d.desc + ' (Cópia)';
-    document.getElementById('edit_valor').value = Math.abs(parseFloat(d.valor)).toFixed(2).replace('.', ',');
-    document.getElementById('edit_data').value = d.data;
-    document.getElementById('edit_cat').value = d.cat || '';
-    document.getElementById('edit_conta').value = d.conta || '';
+    if (d.tipo == '1') document.getElementById('edit_rd_tipo_receita').checked = true;
+    else document.getElementById('edit_rd_tipo_despesa').checked = true;
 
-    if (d.tipo == '1') document.getElementById('edit_tipo_receita').checked = true;
-    else document.getElementById('edit_tipo_despesa').checked = true;
-
+    _setEfetivado('edit_rd', 0, null);
     form.style.display = '';
-    openModal('modalEditarLancamento');
+    openModal('modalEditarRD');
   }
 
 

@@ -127,7 +127,7 @@ async def inserir_transferencia(
             operacoes_descricao=descricao,
             operacoes_conta=conta,
             operacoes_valor=-abs(curr_valor_f),
-            operacoes_tipo="4",
+            operacoes_tipo=4,
             operacoes_fatura=curr_fat_saida,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
@@ -141,7 +141,7 @@ async def inserir_transferencia(
             operacoes_descricao=descricao,
             operacoes_conta=conta_destino,
             operacoes_valor=abs(curr_valor_f),
-            operacoes_tipo="4",
+            operacoes_tipo=4,
             operacoes_fatura=curr_fat_entrada,
             operacoes_parcela=curr_parcela,
             operacoes_efetivado=curr_efetivado,
@@ -173,7 +173,6 @@ async def inserir_transferencia(
     redirecionar = next_url or request.headers.get("referer") or f"/extrato?c={conta}"
     return RedirectResponse(url=redirecionar, status_code=303)
 
-
 @router.post("/editar-transferencia/{op_id}")
 async def editar_transferencia(
     request: Request,
@@ -183,6 +182,7 @@ async def editar_transferencia(
     conta_destino: int = Form(...),
     valor: str = Form(...),
     data: str = Form(...),
+    efetivado: int = Form(default=0),
     data_efetivado: Optional[str] = Form(default=None),
     adicional_id: Optional[int] = Form(default=None),
     escopo: str = Form(default="so_este"),
@@ -210,6 +210,16 @@ async def editar_transferencia(
     valor_limpo = valor.replace(".", "").replace(",", ".")
     valor_float = float(valor_limpo)
     dt_operacao = date.fromisoformat(data)
+    
+    # Lógica de Efetivação
+    dt_efetivado_val = None
+    if efetivado:
+        dt_efetivado_val = datetime.fromisoformat(data_efetivado) if data_efetivado else None
+
+    # Captura faturas antigas para recalcular depois
+    faturas_para_recalcular = set()
+    if op_saida and op_saida.operacoes_fatura: faturas_para_recalcular.add(op_saida.operacoes_fatura)
+    if op_entrada and op_entrada.operacoes_fatura: faturas_para_recalcular.add(op_entrada.operacoes_fatura)
 
     old_date = op.operacoes_data_lancamento
     grupo_id = op.operacoes_grupo_id
@@ -222,6 +232,17 @@ async def editar_transferencia(
         op_saida.operacoes_valor = -abs(valor_float)
         op_saida.operacoes_data_lancamento = dt_operacao
         op_saida.operacoes_adicional_id = adicional_id
+        op_saida.operacoes_efetivado = efetivado
+        op_saida.operacoes_data_efetivado = dt_efetivado_val
+        
+        # Recalcula fatura se a conta de origem for cartão
+        acct_saida_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
+        if acct_saida_obj and acct_saida_obj.tipo_conta == 4:
+            op_saida.operacoes_fatura = get_or_create_fatura(db, conta, dt_operacao)
+            if op_saida.operacoes_fatura: faturas_para_recalcular.add(op_saida.operacoes_fatura)
+        else:
+            op_saida.operacoes_fatura = None
+
         log_evento(db, "UPDATE", "OPERACAO", op_saida.operacoes_id, detalhes, sessao.get("id"))
 
     if op_entrada:
@@ -229,6 +250,17 @@ async def editar_transferencia(
         op_entrada.operacoes_conta = conta_destino
         op_entrada.operacoes_valor = abs(valor_float)
         op_entrada.operacoes_data_lancamento = dt_operacao
+        op_entrada.operacoes_efetivado = efetivado
+        op_entrada.operacoes_data_efetivado = dt_efetivado_val
+
+        # Recalcula fatura se a conta destino for cartão
+        acct_entrada_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_destino).first()
+        if acct_entrada_obj and acct_entrada_obj.tipo_conta == 4:
+            op_entrada.operacoes_fatura = get_or_create_fatura(db, conta_destino, dt_operacao)
+            if op_entrada.operacoes_fatura: faturas_para_recalcular.add(op_entrada.operacoes_fatura)
+        else:
+            op_entrada.operacoes_fatura = None
+
         log_evento(db, "UPDATE", "OPERACAO", op_entrada.operacoes_id, detalhes, sessao.get("id"))
 
     if escopo == "subsequentes":
@@ -253,24 +285,49 @@ async def editar_transferencia(
             
             if new_date != old_date:
                 diff = relativedelta(s_op.operacoes_data_lancamento, old_date)
-                s_op.operacoes_data_lancamento = new_date + diff
+                new_s_dt = new_date + diff
+                s_op.operacoes_data_lancamento = new_s_dt
             
             if float(s_op.operacoes_valor) < 0:
                 s_op.operacoes_valor = -abs(valor_float)
                 s_op.operacoes_conta = conta
+                # Trata fatura em cascata
+                acct_s = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
+                if acct_s and acct_s.tipo_conta == 4:
+                    old_f = s_op.operacoes_fatura
+                    if old_f: faturas_para_recalcular.add(old_f)
+                    s_op.operacoes_fatura = get_or_create_fatura(db, conta, s_op.operacoes_data_lancamento)
+                    if s_op.operacoes_fatura: faturas_para_recalcular.add(s_op.operacoes_fatura)
+                else:
+                    if s_op.operacoes_fatura: faturas_para_recalcular.add(s_op.operacoes_fatura)
+                    s_op.operacoes_fatura = None
             else:
                 s_op.operacoes_valor = abs(valor_float)
                 s_op.operacoes_conta = conta_destino
+                # Trata fatura em cascata
+                acct_s = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_destino).first()
+                if acct_s and acct_s.tipo_conta == 4:
+                    old_f = s_op.operacoes_fatura
+                    if old_f: faturas_para_recalcular.add(old_f)
+                    s_op.operacoes_fatura = get_or_create_fatura(db, conta_destino, s_op.operacoes_data_lancamento)
+                    if s_op.operacoes_fatura: faturas_para_recalcular.add(s_op.operacoes_fatura)
+                else:
+                    if s_op.operacoes_fatura: faturas_para_recalcular.add(s_op.operacoes_fatura)
+                    s_op.operacoes_fatura = None
             
             if not s_op.operacoes_grupo_id:
                  if not op.operacoes_grupo_id:
-                      op.operacoes_grupo_id = f"GAP-{uuid.uuid4().hex[:10]}"
+                      op.operacoes_grupo_id = f"TRF-{uuid.uuid4().hex[:10]}"
                  s_op.operacoes_grupo_id = op.operacoes_grupo_id
 
             log_evento(db, "UPDATE", "OPERACAO", s_op.operacoes_id,
                        f"Transferência editada em cascata: '{descricao}'", sessao.get("id"))
 
     db.commit()
+
+    # Recalcula as faturas após o commit
+    for f_id in faturas_para_recalcular:
+        if f_id: recalcular_total_fatura(db, f_id)
 
     redirecionar = next_url or request.headers.get("referer") or "/dashboard"
     return RedirectResponse(url=redirecionar, status_code=303)
