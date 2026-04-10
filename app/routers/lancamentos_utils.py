@@ -81,4 +81,3 @@ def recalcular_total_fatura(db: Session, fatura_id: int):
 
     fatura.valor_total = total
     db.commit()
-#
