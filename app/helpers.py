@@ -7,22 +7,38 @@ from datetime import date
 from typing import Optional
 
 
-def formata_moeda_brl(valor: Optional[Decimal | float | str]) -> str:
-    """Formata número como moeda BRL: R$ 1.234,56"""
+def formata_moeda_brl(valor: Optional[Decimal | float | str], simbolo: Optional[str] = "R$", abrev: Optional[str] = "BRL") -> str:
+    """
+    Formata número como moeda. 
+    Se a abreviação for 'USD', usa formato americano (1,234.56).
+    Caso contrário, usa formato brasileiro/europeu (1.234,56).
+    """
+    if simbolo is None or simbolo == "":
+        simbolo = "R$"
+    if abrev is None or abrev == "":
+        abrev = "BRL"
+        
     if valor is None or valor == "":
-        return "R$ 0,00"
+        return f"{simbolo} 0,00" if abrev != "USD" else f"{simbolo} 0.00"
+        
     try:
         v = float(valor)
         sinal = "-" if v < 0 else ""
+        
+        # Define separadores baseado na abreviação (USD vs Resto)
+        sep_milhar, sep_decimal = (",", ".") if abrev == "USD" else (".", ",")
+        
         inteiro, decimal_part = f"{abs(v):.2f}".split(".")
+        
         inteiro_fmt = ""
         for i, d in enumerate(reversed(inteiro)):
             if i and i % 3 == 0:
-                inteiro_fmt = "." + inteiro_fmt
+                inteiro_fmt = sep_milhar + inteiro_fmt
             inteiro_fmt = d + inteiro_fmt
-        return f"R$ {sinal}{inteiro_fmt},{decimal_part}"
+            
+        return f"{simbolo} {sinal}{inteiro_fmt}{sep_decimal}{decimal_part}"
     except (ValueError, TypeError):
-        return "R$ 0,00"
+        return f"{simbolo} 0,00" if abrev != "USD" else f"{simbolo} 0.00"
 
 
 def mostra_data(data: Optional[date | str]) -> str:
@@ -78,3 +94,18 @@ def formata_parcela(parcela: Optional[str | Decimal], por_extenso: Optional[bool
 
 def date_today() -> str:
     return date.today().isoformat()
+
+
+def bandeira_emoji(code: Optional[str]) -> str:
+    """Converte código ISO (ex: 'br') em emoji de bandeira."""
+    if not code:
+        return ""
+    code = str(code).strip().lower()
+    if len(code) != 2:
+        # Se não for um código de 2 letras, mas já for um emoji ou outra coisa, retorna como está
+        return code if len(code) > 0 else ""
+    try:
+        # Regional Indicator Symbols: 'A' é 127462
+        return "".join(chr(127462 + ord(c.upper()) - ord('A')) for c in code)
+    except Exception:
+        return ""
