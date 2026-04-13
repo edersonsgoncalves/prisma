@@ -9,7 +9,7 @@
     <h1>Minhas Contas</h1>
     <p>Gerencie suas contas correntes, poupanças e carteiras.</p>
   </div>
-  <button class="btn btn-primary" onclick="openModal('modalNovaConta')">
+  <button class="btn btn-primary" onclick="openAccountModal('new')">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     Nova Conta
   </button>
@@ -35,9 +35,14 @@
       <div class="card flex flex-col justify-between" style="min-height: 140px;">
         <div class="flex justify-between items-start">
           <div>
-            <h3 style="font-size: 16px; font-weight: 700;">{{ conta.nome_conta }}</h3>
+            <h3 style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+              {% if conta.moeda_rel.contas_moedas_bandeira %}
+                <span class="fi fi-{{ conta.moeda_rel.contas_moedas_bandeira }}"></span>
+              {% endif %}
+              {{ conta.nome_conta }}
+            </h3>
           </div>
-          <button class="btn-icon btn-xs" onclick="openEditModal('{{ conta.conta_id }}', '{{ conta.nome_conta }}', '{{ conta.tipo_conta }}', '{{ conta.contas_limite }}')">
+          <button class="btn-icon btn-xs" onclick="openAccountModal('edit', {id: '{{ conta.conta_id }}', nome: '{{ conta.nome_conta }}', tipo: '{{ conta.tipo_conta }}', moeda: '{{ conta.conta_moeda }}', limite: '{{ conta.contas_limite or 0 }}', fechamento: '{{ conta.contas_cartao_fechamento or 0 }}', desconsiderar: '{{ conta.contas_desconsiderar_saldo or 0 }}'})">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
         </div>
@@ -45,10 +50,10 @@
         <div class="mt-4">
           <div class="stat-label">Saldo Atual</div>
           <div class="stat-value {{ cor_valor(saldos.get(conta.conta_id, 0)) }}">
-            {{ formata_moeda(saldos.get(conta.conta_id, 0)) }}
+            {{ formata_moeda(saldos.get(conta.conta_id, 0), conta.moeda_rel.contas_moedas_simbolo, conta.moeda_rel.contas_moedas_abrev) }}
           </div>
           {% if conta.contas_limite %}
-          <div class="stat-sub">Limite: {{ formata_moeda(conta.contas_limite) }}</div>
+          <div class="stat-sub">Limite: {{ formata_moeda(conta.contas_limite, conta.moeda_rel.contas_moedas_simbolo, conta.moeda_rel.contas_moedas_abrev) }}</div>
           {% endif %}
         </div>
 
@@ -67,16 +72,190 @@
 
 
 
+<!-- Modal Único para Nova Conta / Editar Conta -->
+<div class="modal-backdrop" id="modalConta">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modalContaTitle">Nova Conta</h3>
+      <button class="modal-close" onclick="closeModal('modalConta')">&times;</button>
+    </div>
+    <form id="formConta" method="POST" action="/contas/nova">
+      <input type="hidden" id="conta_limite" name="limite" value="0,00">
+      <input type="hidden" id="conta_fechamento" name="fechamento" value="0">
+      <div class="form-group">
+        <label class="form-label" for="conta_nome">Nome da Conta</label>
+        <input type="text" id="conta_nome" name="nome" class="form-control" placeholder="Ex: Nubank, Carteira..." required>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label" for="conta_tipo">Tipo de Conta</label>
+          <select id="conta_tipo" name="tipo" class="form-control" required>
+            {% for t in tipos %}
+            <option value="{{ t.idtipos_contas }}">{{ t.tipos_contas }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="conta_moeda">Moeda</label>
+          <div class="custom-select-wrapper" id="currency_select_wrapper">
+            <div class="custom-select-trigger" onclick="toggleCustomSelect()">
+              <div id="currency_trigger_content" class="flex items-center gap-2">
+                <span>Selecione...</span>
+              </div>
+            </div>
+            <div class="custom-options" style="display: none;">
+              {% for m in moedas %}
+              <div class="custom-option" 
+                   data-value="{{ m.idcontas_moedas }}" 
+                   data-nome="{{ m.contas_moedas_nome }}" 
+                   data-simbolo="{{ m.contas_moedas_simbolo }}" 
+                   data-bandeira="{{ m.contas_moedas_bandeira }}"
+                   onclick="selectCurrencyOption(this)">
+                {% if m.contas_moedas_bandeira %}
+                <span class="fi fi-{{ m.contas_moedas_bandeira }}"></span>
+                {% endif %}
+                <span>{{ m.contas_moedas_nome }} ({{ m.contas_moedas_simbolo }})</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <input type="hidden" id="conta_moeda" name="conta_moeda" value="1">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group" id="group_saldo_inicial">
+          <label class="form-label" for="conta_saldo_inicial">Saldo Inicial</label>
+          <input type="text" id="conta_saldo_inicial" name="conta_saldo_inicial" class="form-control" value="0,00">
+        </div>
+        <div class="form-group" id="group_data_saldo">
+          <label class="form-label" for="data_conta_saldo_incial">Data Saldo Inicial</label>
+          <input type="date" id="data_conta_saldo_incial" name="data_conta_saldo_incial" class="form-control" value="{{ hoje }}">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group flex items-center gap-2">
+          <input type="checkbox" id="contas_desconsiderar_saldo" name="contas_desconsiderar_saldo">
+          <label class="form-label mb-0" for="contas_desconsiderar_saldo">Ignorar no Saldo Geral?</label>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-6">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modalConta')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-  function openEditModal(id, nome, tipo, limite) {
-    document.getElementById('formEditarConta').action = '/contas/editar/' + id;
-    document.getElementById('edit_nome').value = nome;
-    document.getElementById('edit_tipo').value = tipo;
-    document.getElementById('edit_limite').value = parseFloat(limite || 0).toFixed(2).replace('.', ',');
-    openModal('modalEditarConta');
+  function openAccountModal(mode, data = null) {
+    const title = document.getElementById('modalContaTitle');
+    const form = document.getElementById('formConta');
+    const inputNome = document.getElementById('conta_nome');
+    const selectTipo = document.getElementById('conta_tipo');
+    const inputMoeda = document.getElementById('conta_moeda'); // Agora é um hidden input
+    const inputLimite = document.getElementById('conta_limite');
+    const inputFechamento = document.getElementById('conta_fechamento');
+    const inputSaldoInicial = document.getElementById('conta_saldo_inicial');
+    const inputDataSaldo = document.getElementById('data_conta_saldo_incial');
+    const checkDesconsiderar = document.getElementById('contas_desconsiderar_saldo');
+    
+    // Contêineres de saldo inicial (geralmente só na criação)
+    const groupSaldo = document.getElementById('group_saldo_inicial');
+    const groupData = document.getElementById('group_data_saldo');
+
+    if (mode === 'edit' && data) {
+      title.textContent = 'Editar Conta';
+      form.action = '/contas/editar/' + data.id;
+      inputNome.value = data.nome;
+      selectTipo.value = data.tipo;
+      
+      // Sincroniza o custom select
+      inputMoeda.value = data.moeda;
+      syncCurrencyDisplay(data.moeda);
+
+      if (inputLimite) inputLimite.value = parseFloat(data.limite || 0).toFixed(2).replace('.', ',');
+      if (inputFechamento) inputFechamento.value = data.fechamento || 0;
+      
+      checkDesconsiderar.checked = data.desconsiderar == 1;
+      
+      // Esconde saldo inicial no edit
+      if (groupSaldo) groupSaldo.style.display = 'none';
+      if (groupData) groupData.style.display = 'none';
+    } else {
+      title.textContent = 'Nova Conta';
+      form.action = '/contas/nova';
+      form.reset();
+      
+      // Reset custom select para o padrão (geralmente ID 1)
+      inputMoeda.value = "1";
+      syncCurrencyDisplay("1");
+
+      if (inputLimite) inputLimite.value = '0,00';
+      if (inputFechamento) inputFechamento.value = '0';
+      inputSaldoInicial.value = '0,00';
+      inputDataSaldo.value = '{{ hoje }}';
+      checkDesconsiderar.checked = false;
+      
+      // Mostra saldo inicial no new
+      if (groupSaldo) groupSaldo.style.display = 'block';
+      if (groupData) groupData.style.display = 'block';
+    }
+    
+    openModal('modalConta');
   }
+
+  // Lógica do Custom Select de Moeda
+  function toggleCustomSelect() {
+    const wrapper = document.getElementById('currency_select_wrapper');
+    const options = wrapper.querySelector('.custom-options');
+    const isOpening = wrapper.classList.toggle('open');
+    options.style.display = isOpening ? 'block' : 'none';
+  }
+
+  function selectCurrencyOption(el) {
+    const val = el.getAttribute('data-value');
+    document.getElementById('conta_moeda').value = val;
+    syncCurrencyDisplay(val);
+    
+    // Fecha e esconde
+    const wrapper = document.getElementById('currency_select_wrapper');
+    const options = wrapper.querySelector('.custom-options');
+    wrapper.classList.remove('open');
+    options.style.display = 'none';
+  }
+
+  function syncCurrencyDisplay(val) {
+    const options = document.querySelectorAll('.custom-option');
+    const triggerContent = document.getElementById('currency_trigger_content');
+    
+    options.forEach(opt => {
+      opt.classList.remove('selected');
+      if (opt.getAttribute('data-value') == val) {
+        opt.classList.add('selected');
+        
+        const bandeira = opt.getAttribute('data-bandeira');
+        const nome = opt.getAttribute('data-nome');
+        const simbolo = opt.getAttribute('data-simbolo');
+        
+        let html = '';
+        if (bandeira) html += `<span class="fi fi-${bandeira}"></span>`;
+        html += `<span>${nome} (${simbolo})</span>`;
+        triggerContent.innerHTML = html;
+      }
+    });
+  }
+
+  // Fecha dropdown se clicar fora
+  window.addEventListener('click', function(e) {
+    const wrapper = document.getElementById('currency_select_wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+      wrapper.classList.remove('open');
+      const options = wrapper.querySelector('.custom-options');
+      if (options) options.style.display = 'none';
+    }
+  });
 </script>
 {% endblock %}

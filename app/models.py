@@ -66,7 +66,8 @@ class ContaBancaria(Base):
     conta_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nome_conta: Mapped[str] = mapped_column(String(100))
     tipo_conta: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    conta_moeda: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    conta_moeda: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contas_moedas.idcontas_moedas"), nullable=True)
+    moeda_rel: Mapped[Optional["ContasMoeda"]] = relationship()
     contas_limite: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
     contas_cartao_fechamento: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     contas_prev_debito: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -245,4 +246,27 @@ class LogOperacao(Base):
     log_detalhes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     log_lido: Mapped[int] = mapped_column(SmallInteger, default=0)
 
-    usuario: Mapped[Optional[Usuario]] = relationship()
+
+# ──────────────────────────────────────────────
+# MOEDAS DE CONTAS
+# ──────────────────────────────────────────────
+class ContasMoeda(Base):
+    __tablename__ = "contas_moedas"
+
+    idcontas_moedas: Mapped[int] = mapped_column(Integer, primary_key=True)
+    contas_moedas_nome: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    contas_moedas_abrev: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    contas_moedas_simbolo: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
+    contas_moedas_bandeira: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    contas_moedas_cotacao: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    contas_moeda_cotacao_data: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+# ──────────────────────────────────────────────
+# TIPOS DE CONTAS
+# ──────────────────────────────────────────────
+class TipoConta(Base):
+    __tablename__ = "tipos_contas"
+
+    idtipos_contas: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tipos_contas: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
