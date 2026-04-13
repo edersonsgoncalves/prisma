@@ -2,7 +2,7 @@ name: Agente Revisor Pri$ma
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize]
   issue_comment:
     types: [created]
 
@@ -18,8 +18,10 @@ jobs:
         uses: Codium-ai/pr-agent@main
         env:
           GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CONFIG.MODEL: "gemini/gemini-1.5-flash"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Forçando configurações de baixo consumo para evitar erros de API
+          PR_REVIWER.ENABLE_SUMMARY: true
+          PR_REVIWER.ENABLE_CODE_SUGGESTIONS: false # Desativa sugestões de linha para evitar erro de limite
           PR_REVIWER.EXTRA_INSTRUCTIONS: |
             Você é um revisor sênior auxiliando no projeto Prisma (Pri$ma). 
             Analise o diff da PR e foque em: 
