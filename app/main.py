@@ -18,7 +18,6 @@ from app.auth import require_login, verificar_credenciais, criar_sessao, encerra
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
 # Importação dos routers
-# Importação dos routers
 from app.routers import (
     dashboard, extrato, contas, faturas, categorias,
     projetos, recorrencias, relatorios, notificacoes,
@@ -34,9 +33,6 @@ load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 BASE_DIR = Path(__file__).resolve().parent
 APP_DEBUG = os.getenv("APP_DEBUG", "false").lower() in {"1", "true", "yes", "on"}
 
-# Cria tabela de usuários se não existir (as demais já existem)
-Base.metadata.create_all(bind=engine, tables=[Usuario.__table__])
-
 app = FastAPI(
     title="Prisma",
     description="Sistema de Gerenciamento de Finanças Pessoais",
@@ -45,6 +41,13 @@ app = FastAPI(
     redoc_url="/redoc",
     debug=APP_DEBUG,
 )
+
+@app.on_event("startup")
+def startup_event():
+    # Cria tabela de usuários se não existir (as demais já existem)
+    # Movido para o evento startup para evitar execução durante a importação em testes
+    if os.getenv("SKIP_DB_INIT") != "true":
+        Base.metadata.create_all(bind=engine, tables=[Usuario.__table__])
 
 # ── Arquivos estáticos ─────────────────────────────
 app.mount("/static", StaticFiles(directory=str(BASE_DIR.parent / "static")), name="static")
