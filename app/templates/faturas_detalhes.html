@@ -715,6 +715,7 @@
                       
                       {% else %}
                       <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="display:block;">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
                         <button type="submit" class="text-danger">Excluir</button>
                       </form>
                       {% endif %}
@@ -778,6 +779,7 @@
       <button class="modal-close" onclick="closeModal('modalNovoLancamentoFatura')">&times;</button>
     </div>
     <form action="/lancamentos/fatura/inserir/lancamento" method="post" id="formNovoLancamento">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="conta" value="{{ fatura.conta_id }}">
       <input type="hidden" name="vincular_fatura" value="on"> 
       <input type="hidden" name="fatura_id_origem" value="{{ fatura.fatura_id }}">
@@ -915,6 +917,7 @@
       <button class="modal-close" onclick="closeModal('modalAdicionarPagamento')">&times;</button>
     </div>
     <form action="/faturas/pagar" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="conta_destino_fatura" value="{{ fatura.fatura_id }}">
       
       <div class="form-group">
@@ -983,6 +986,7 @@
       <button class="modal-close" onclick="closeModal('modalMoverFatura')">&times;</button>
     </div>
     <form action="/faturas/mover-lancamento" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="operacao_id" id="mover_fatura_op_id">
       <div class="form-group">
         <label class="form-label">Selecione a nova fatura:</label>
@@ -1009,6 +1013,7 @@
       <button class="modal-close" onclick="closeModal('modalConverterTransf')">&times;</button>
     </div>
     <form action="/faturas/converter-transferencia" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="operacao_id" id="conv_transf_op_id">
       <div class="form-group">
         <label class="form-label">Selecione a conta de destino:</label>
@@ -1037,12 +1042,14 @@
       <p>Este lançamento faz parte de uma série..<br/>Você deseja deletar somente ele ou todos os lançamentos futuros?</p><br/>
       <span style="display: flex; gap: 10px; justify-content: center;">
         <form action="/lancamentos/deletar/serie" method="post" onsubmit="return validarFormOnly()">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
           <input type="hidden" name="operacao_id" id="deleta_parcelados_op_id_only">
           <input type="hidden" name="modo" value="only">
           <button type="submit" class="btn btn-warning btn-sm">Somente este</button>
         </form>
         
         <form action="/lancamentos/deletar/serie" method="post" onsubmit="return validarFormAll()">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
           <input type="hidden" name="operacao_id" id="deleta_parcelados_op_id_all">
           <input type="hidden" name="modo" value="all">
           <button type="submit" class="btn btn-danger btn-sm">Este e futuros</button>
@@ -1066,6 +1073,7 @@
     </div>
 
     <form id="formEditarOpRD" action="" method="post" style="display:none">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="conta" id="edit_conta">
       <div class="form-group">
         <label class="form-label">Descrição</label>
@@ -1166,6 +1174,7 @@
       <button class="modal-close" onclick="closeModal('modalNovaTransferenciaFatura')">&times;</button>
     </div>
     <form action="/lancamentos/transferir" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="tipo" value="4">
       
       <div class="form-group">
