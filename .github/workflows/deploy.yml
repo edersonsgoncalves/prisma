@@ -23,6 +23,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}    # Seu usuário 'rbp' salvo nos Secrets
           key: ${{ secrets.SSH_PRIVATE_KEY }} # Sua chave SSH salva nos Secrets
           port: 22
+          command_timeout: 20m
           script: |
             # Executa o script usando o caminho absoluto que você confirmou
             /bin/bash /var/www/html/Prisma/scripts/update.sh
