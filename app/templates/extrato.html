@@ -433,6 +433,7 @@
               <div class="dropdown-content">
                 {% if not op.operacoes_efetivado %}
                 <form action="/lancamentos/efetivar/{{ op.operacoes_id }}" method="post" style="margin:0;">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
                   <button type="submit" class="text-success" style="text-align: left;">
                     Efetivar
                   </button>
@@ -466,6 +467,7 @@
                   data-conta="{{ op.operacoes_conta }}"
                   onclick="openDuplicateModal(this)">Duplicar</button>
                 <form action="/lancamentos/deletar/{{ op.operacoes_id }}" method="post" onsubmit="return confirm('Tem certeza?')" style="margin:0;">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
                   <button type="submit" class="text-danger" style="text-align: left;">Excluir</button>
                 </form>
               </div>
@@ -529,6 +531,7 @@
       <button class="modal-close" onclick="closeModal('modalNovoLancamento')">&times;</button>
     </div>
     <form action="/lancamentos/inserir" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <div class="form-group">
         <label class="form-label">Conta</label>
         <select name="conta" class="form-control" required>
@@ -673,6 +676,7 @@
       <button class="modal-close" onclick="closeModal('modalNovaTransferencia')">&times;</button>
     </div>
     <form action="/lancamentos/transferir" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
     <input type="hidden" name="tipo" value="4">
     
     <div class="form-group">
@@ -807,6 +811,7 @@
        <span class="text-muted">Carregando...</span>
     </div>
     <form id="formEditarRD" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="escopo" id="edit_escopo_rd" value="so_este">
       <div class="form-group">
         <label class="form-label">Conta</label>
@@ -912,6 +917,7 @@
        <span class="text-muted">Carregando...</span>
     </div>
     <form id="formEditarTransf" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="escopo" id="edit_escopo_transf" value="so_este">
       <div class="form-group">
         <label class="form-label">Descrição</label>
@@ -988,6 +994,7 @@
        <span class="text-muted">Carregando...</span>
     </div>
     <form id="formEditarPagFatura" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" name="escopo" id="edit_escopo_pf" value="so_este">
       <div class="form-group">
         <label class="form-label">Descrição</label>

@@ -80,6 +80,7 @@
       <button class="modal-close" onclick="closeModal('modalConta')">&times;</button>
     </div>
     <form id="formConta" method="POST" action="/contas/nova">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <input type="hidden" id="conta_limite" name="limite" value="0,00">
       <input type="hidden" id="conta_fechamento" name="fechamento" value="0">
       <div class="form-group">

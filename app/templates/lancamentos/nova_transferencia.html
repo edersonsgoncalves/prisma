@@ -64,6 +64,7 @@
 {% block content %}
 <div class="card max-w-2xl mx-auto">
   <form action="/lancamentos/transferir" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
     <input type="hidden" name="tipo" value="4">
     
     <div class="form-group">

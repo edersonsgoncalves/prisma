@@ -3,6 +3,7 @@ app/templates.py — Instância centralizada do Jinja2 para evitar duplicidade d
 """
 from pathlib import Path
 from fastapi.templating import Jinja2Templates
+from app.csrf import get_csrf_token
 from app.helpers import (
     formata_moeda_brl, mostra_data, cor_valor, 
     mes_por_extenso, formata_parcela, date_today, NOMES_MESES,
@@ -24,4 +25,5 @@ templates.env.globals.update(
     date_today=date_today,
     NOMES_MESES=NOMES_MESES,
     bandeira_emoji=bandeira_emoji,
+    csrf_token=get_csrf_token,
 )

@@ -39,6 +39,7 @@
           </td>
           <td class="text-right">
             <form action="/categorias/deletar/{{ cat.categorias_id }}" method="post" style="display:inline;">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
               <button type="submit" class="btn btn-danger btn-xs" onclick="return confirm('Excluir categoria?')">Excluir</button>
             </form>
           </td>
@@ -56,6 +57,7 @@
       <button class="modal-close" onclick="closeModal('modalNovaCat')">&times;</button>
     </div>
     <form action="/categorias/nova" method="post">
+  <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
       <div class="form-group">
         <label class="form-label">Nome</label>
         <input type="text" name="nome" class="form-control" required>
