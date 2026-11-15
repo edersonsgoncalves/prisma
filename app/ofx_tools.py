@@ -166,15 +166,16 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             if not conta:
                 raise ValueError("Nenhuma conta cadastrada no sistema.")
 
+        valor_op = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
         nova = Operacao(
             operacoes_data_lancamento = data_lancamento,
             operacoes_descricao       = payload.memo or "Importado via OFX",
             operacoes_conta           = conta.conta_id,
-            operacoes_valor           = abs(payload.valor),
+            operacoes_valor           = valor_op,
             operacoes_tipo            = tipo_int,
             operacoes_efetivado       = 1 if payload.como_efetivado else 0,
             operacoes_data_efetivado  = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None,
-            operacoes_fitid           = payload.fitid,   # requer migration
+            operacoes_fitid           = payload.fitid,
             operacoes_validacao       = 1,
         )
         db.add(nova)
