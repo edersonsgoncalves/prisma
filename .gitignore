@@ -4,6 +4,7 @@
 dist/
 .pytest_cache/
 .db
+.venv-tools
 
 
 # Byte-compiled / optimized / DLL files
@@ -31,6 +32,7 @@ mysql_revert/
 
 # Docker
 .docker/
+docker-compose.local.yml
 
 # IDEs
 .vscode/
