@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Define o caminho absoluto exato
 PROJECT_DIR="/var/www/html/Prisma"
@@ -13,19 +14,25 @@ else
     exit 1
 fi
 
-# 1. Build e Up
-# O -d roda em background, o --build atualiza o código Python
-docker compose up --build -d
+# 1. Sincroniza código com o que foi publicado em main
+echo "🔄 Sincronizando código (origin/main)..."
+git fetch origin --prune
+git checkout main
+git reset --hard origin/main
 
-# 2. Limpeza de imagens antigas
+# 2. Build e Up (apenas app; banco em produção é o MySQL do host)
+# O -d roda em background, o --build atualiza o código Python
+docker compose up --build -d app
+
+# 3. Limpeza de imagens antigas
 # Essencial para não encher o disco do servidor com versões obsoletas
 echo "🧹 Removendo imagens não utilizadas..."
 docker image prune -f
 
 echo "✅ Prisma atualizado com sucesso!"
-echo "📍 Acesse em: http://100.64.0.1:8000"
+echo "📍 Acesse em: https://prisma.edersongoncalves.online"
 
-# 3. Verificação de logs
+# 4. Verificação de logs
 # Mostra se o FastAPI subiu e se conectou ao MySQL
 echo "--- Verificando Logs do App ---"
 sleep 2 # Pequena pausa para o container estabilizar
