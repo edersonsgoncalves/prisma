@@ -30,7 +30,7 @@ echo "🧹 Removendo imagens não utilizadas..."
 docker image prune -f
 
 echo "✅ Prisma atualizado com sucesso!"
-echo "📍 Acesse em: http://100.64.0.1:8000"
+echo "📍 Acesse em: https://prisma.edersongoncalves.online"
 
 # 4. Verificação de logs
 # Mostra se o FastAPI subiu e se conectou ao MySQL
