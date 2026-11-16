@@ -1,18 +1,17 @@
 # app/routers/ofx.py
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Request
+from fastapi import APIRouter, Depends, File, UploadFile, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import Optional
 import tempfile, os
 
 from app.database import get_db
-from app.models import Operacao, ContaBancaria, Categoria
+from app.models import ContaBancaria
 from app.ofx_tools import analisar_ofx, efetivar_transacao, EfetivarPayload
 from app.auth import require_login
+from app.templates import templates
 
 router = APIRouter(prefix="/ofx", tags=["ofx"])
-templates = Jinja2Templates(directory="app/templates")
 
 
 # ---------------------------------------------------------------------------
@@ -26,8 +25,9 @@ async def importar_page(
 ):
     contas = db.query(ContaBancaria).all()
     return templates.TemplateResponse(
+        request,
         "ofx_import.html",
-        {"request": request, "contas": contas, "current_user": current_user},
+        {"contas": contas, "current_user": current_user, "sessao": current_user},
     )
 
 
@@ -37,7 +37,7 @@ async def importar_page(
 @router.post("/analisar")
 async def analisar(
     arquivo: UploadFile = File(...),
-    conta_id: Optional[int] = None,
+    conta_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     current_user=Depends(require_login),
 ):
