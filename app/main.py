@@ -5,11 +5,9 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-import traceback
-import logging
 from app.templates import templates
 
 from app.database import engine, Base
@@ -33,7 +31,6 @@ from app.routers.pdf_fatura import router as pdf_fatura_router
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
 BASE_DIR = Path(__file__).resolve().parent
-APP_DEBUG = os.getenv("APP_DEBUG", "false").lower() in {"1", "true", "yes", "on"}
 
 # Cria tabela de usuários se não existir (as demais já existem)
 Base.metadata.create_all(bind=engine, tables=[Usuario.__table__])
@@ -42,9 +39,9 @@ app = FastAPI(
     title="Prisma",
     description="Sistema de Gerenciamento de Finanças Pessoais",
     version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    debug=APP_DEBUG,
+    docs_url=None,
+    redoc_url=None,
+    debug=False,
 )
 
 # CSRF protection
@@ -80,7 +77,3 @@ async def root():
 @app.get("/ping")
 async def ping():
     return {"status": "ok", "message": "Pong! Prisma is alive."}
-
-@app.get("/debug-error")
-async def debug_error():
-    raise RuntimeError("Teste de Traceback: Se você vê isso, o middleware está funcionando!")
