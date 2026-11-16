@@ -1,0 +1,31 @@
+name: Agente Revisor Pri$ma
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  pr_agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR Agent Action
+        uses: Codium-ai/pr-agent@main
+        env:
+          GOOGLE_AI_STUDIO_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Forçando configurações de baixo consumo para evitar erros de API
+          PR_REVIWER.ENABLE_SUMMARY: true
+          PR_REVIWER.ENABLE_CODE_SUGGESTIONS: false # Desativa sugestões de linha para evitar erro de limite
+          PR_REVIWER.EXTRA_INSTRUCTIONS: |
+            Você é um revisor sênior auxiliando no projeto Prisma (Pri$ma). 
+            Analise o diff da PR e foque em: 
+            1. Boas práticas de Python (PEP 8). 
+            2. Segurança em conexões Docker/MySQL. 
+            3. Sugestões de melhoria para o sistema de finanças. 
+            Responda em Português com um tom prestativo e direto.
