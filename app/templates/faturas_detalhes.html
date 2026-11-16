@@ -309,6 +309,10 @@
   .dropdown-kebab .dropdown-content.show {
     display: flex !important;
     flex-direction: column;
+    position: fixed !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 3000;
   }
 
   /* Barra de Ações em Massa */
@@ -1444,16 +1448,30 @@ function toggleKebab(e, btn) {
   e.stopPropagation();
   const content = btn.nextElementSibling;
   const isShown = content.classList.contains('show');
-  document.querySelectorAll('.dropdown-content').forEach(d => d.classList.remove('show'));
-  if (!isShown) content.classList.add('show');
-
-  const rect = content.getBoundingClientRect();
-  if (rect.bottom > window.innerHeight) {
-    content.style.top = 'auto';
-    content.style.bottom = '100%';
-  } else {
-    content.style.top = '100%';
-    content.style.bottom = 'auto';
+  document.querySelectorAll('.dropdown-content').forEach(d => {
+    d.classList.remove('show');
+    d.style.top = '';
+    d.style.left = '';
+    d.style.bottom = '';
+    d.style.right = '';
+  });
+  if (!isShown) {
+    content.classList.add('show');
+    // Posiciona como fixed para não ser cortado por overflow dos containers
+    const btnRect = btn.getBoundingClientRect();
+    const menuRect = content.getBoundingClientRect();
+    const margin = 4;
+    let top = btnRect.bottom + margin;
+    if (top + menuRect.height > window.innerHeight - margin && btnRect.top - menuRect.height - margin > margin) {
+      top = btnRect.top - menuRect.height - margin;
+    }
+    let left = btnRect.right - menuRect.width;
+    if (left < margin) left = margin;
+    if (left + menuRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - menuRect.width - margin;
+    }
+    content.style.top = top + 'px';
+    content.style.left = left + 'px';
   }
 }
 

@@ -797,10 +797,8 @@ select.form-control {
   overflow: hidden;
 }
 
-.dropdown-kebab:focus-within .dropdown-content {
-  display: flex;
-  flex-direction: column;
-}
+/* Visibilidade controlada via JS (.show) para permitir posicionamento fixed;
+   :focus-within não é usado para evitar reabertura em posição absoluta ao fechar. */
 
 .dropdown-content button,
 .dropdown-content a {
@@ -822,6 +820,17 @@ select.form-control {
 .dropdown-content a:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* Exibe dropdown via JS (position fixed para evitar clipping em containers com overflow) */
+.dropdown-kebab .dropdown-content.show,
+.dropdown-content.show {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  z-index: 3000;
 }
 
 /* ─── Ações em Massa (Floating Bar) ────────────────────────── */
