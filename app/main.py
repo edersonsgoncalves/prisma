@@ -12,7 +12,7 @@ from app.templates import templates
 
 from app.database import engine, Base
 from app.models import Usuario
-from app.auth import require_login, verificar_credenciais, criar_sessao, encerrar_sessao, hash_senha
+from app.auth import require_login, verificar_credenciais, criar_sessao, encerrar_sessao, hash_senha, SECRET_KEY
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 from app.csrf import CSRFMiddleware
 
@@ -45,7 +45,7 @@ app = FastAPI(
 )
 
 # CSRF protection
-app.add_middleware(CSRFMiddleware, secret=os.getenv("APP_SECRET_KEY", "dev-secret-troque-em-producao"))
+app.add_middleware(CSRFMiddleware, secret=SECRET_KEY)
 
 # ── Arquivos estáticos ─────────────────────────────
 app.mount("/static", StaticFiles(directory=str(BASE_DIR.parent / "static")), name="static")

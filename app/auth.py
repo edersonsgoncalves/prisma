@@ -16,12 +16,42 @@ from app.models import Usuario
 
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 
-SECRET_KEY   = os.getenv('APP_SECRET_KEY', 'dev-secret-troque-em-producao')
-COOKIE_NAME  = os.getenv('SESSION_COOKIE_NAME', 'finorg_session')
-MAX_AGE_SEC  = 60 * 60 * 8   # 8 horas
-COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+_INSECURE_SECRET_DEFAULT = "dev-secret-troque-em-producao"
 
-_serializer  = URLSafeTimedSerializer(SECRET_KEY)
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_secret_key() -> str:
+    secret = os.getenv("APP_SECRET_KEY")
+    allow_insecure = _env_flag("ALLOW_INSECURE_APP_SECRET", False)
+    if not secret or secret == _INSECURE_SECRET_DEFAULT:
+        if allow_insecure:
+            return _INSECURE_SECRET_DEFAULT
+        raise RuntimeError(
+            "APP_SECRET_KEY ausente ou inseguro. Defina um segredo forte no ambiente "
+            "(ou ALLOW_INSECURE_APP_SECRET=true apenas para desenvolvimento local explícito)."
+        )
+    return secret
+
+
+def _cookie_secure_default() -> bool:
+    if os.getenv("SESSION_COOKIE_SECURE") is not None:
+        return _env_flag("SESSION_COOKIE_SECURE", False)
+    app_env = (os.getenv("APP_ENV") or "").strip().lower()
+    return app_env in {"prod", "production"}
+
+
+SECRET_KEY = _load_secret_key()
+COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'finorg_session')
+MAX_AGE_SEC = 60 * 60 * 8   # 8 horas
+COOKIE_SECURE = _cookie_secure_default()
+
+_serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 
 # ──────────────────────────────────────────────
