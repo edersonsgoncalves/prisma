@@ -4,15 +4,12 @@ Fornece: middleware de sessão, login, logout, proteção de rotas.
 """
 import os
 from pathlib import Path
-from functools import wraps
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Request, HTTPException
-from fastapi.responses import RedirectResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import bcrypt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.models import Usuario
@@ -25,7 +22,6 @@ MAX_AGE_SEC  = 60 * 60 * 8   # 8 horas
 COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
 
 _serializer  = URLSafeTimedSerializer(SECRET_KEY)
-pwd_context  = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ──────────────────────────────────────────────
@@ -94,9 +90,9 @@ def require_login(request: Request) -> dict:
     """
     sessao = ler_sessao(request)
     if not sessao:
-        # Retorna redirect — FastAPI aceita exceção de Response
+        # 303 evita reenvio do método original (ex.: POST) ao redirecionar
         raise HTTPException(
-            status_code=307,
+            status_code=303,
             headers={"Location": "/login"},
         )
     return sessao
@@ -106,34 +102,36 @@ def require_login(request: Request) -> dict:
 # Login / Logout
 # ──────────────────────────────────────────────
 
+_BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
+
+
+def _senha_bytes(senha: str) -> bytes:
+    # bcrypt considera apenas os primeiros 72 bytes
+    return senha.encode("utf-8")[:72]
+
+
 def verificar_credenciais(db: Session, login: str, senha: str) -> Optional[Usuario]:
-    """Busca usuário e valida senha. Retorna o objeto Usuario ou None."""
+    """Busca usuário e valida senha (bcrypt). Retorna o objeto Usuario ou None."""
     usuario = db.query(Usuario).filter(
         Usuario.usuario_login == login,
         Usuario.usuario_ativo == 1,
     ).first()
     if not usuario:
         return None
-    
-    # Workaround para erro de "72 bytes" no passlib + bcrypt 4.0+ no Windows
-    try:
-        # Se for um hash bcrypt válido, tentamos validar diretamente
-        if usuario.usuario_senha.startswith(("$2a$", "$2b$", "$2y$")):
-            input_pwd = senha.encode('utf-8')
-            stored_hash = usuario.usuario_senha.encode('utf-8')
-            if bcrypt.checkpw(input_pwd, stored_hash):
-                return usuario
-            return None
-    except Exception:
-        # Se falhar a verificação direta (ex: formato inválido), 
-        # tentamos o passlib como fallback (embora ele provavelmente vá falhar com o mesmo ValueError)
-        pass
 
-    if not pwd_context.verify(senha, usuario.usuario_senha):
+    hash_armazenado = usuario.usuario_senha or ""
+    if not hash_armazenado.startswith(_BCRYPT_PREFIXES):
         return None
-    return usuario
+
+    try:
+        ok = bcrypt.checkpw(_senha_bytes(senha), hash_armazenado.encode("utf-8"))
+    except ValueError:
+        # hash malformado ou entrada inválida
+        return None
+
+    return usuario if ok else None
 
 
 def hash_senha(senha: str) -> str:
     """Gera hash bcrypt de uma senha em texto plano."""
-    return pwd_context.hash(senha)
+    return bcrypt.hashpw(_senha_bytes(senha), bcrypt.gensalt()).decode("utf-8")
