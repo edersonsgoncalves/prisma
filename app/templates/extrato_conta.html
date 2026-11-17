@@ -742,21 +742,27 @@
 
     const fd = new FormData();
     fd.append('conta_destino_id', contaDestino);
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content
+      || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
+      || '';
+    const headers = {};
+    if (csrfToken) headers['X-CSRFToken'] = decodeURIComponent(csrfToken);
 
     try {
       const resp = await fetch(`/lancamentos/converter-para-transferencia/${opId}`, {
         method: 'POST',
+        headers,
         body: fd
       });
-      const data = await resp.json();
-      if (data.sucesso) {
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.sucesso) {
         window.location.reload();
       } else {
-        alert('Erro ao converter: ' + (data.erro || 'Erro desconhecido'));
+        alert('Erro ao converter: ' + (data.erro || data.detail || ('HTTP ' + resp.status)));
       }
     } catch (e) {
       console.error(e);
-      alert('Erro na requisição.');
+      alert('Erro na requisição: ' + e.message);
     }
   }
 
