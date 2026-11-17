@@ -462,6 +462,7 @@
                   data-desc="{{ op.operacoes_descricao }}"
                   data-valor="{{ op.operacoes_valor }}"
                   data-tipo="{{ op.operacoes_tipo }}"
+                  data-transf-rel="{{ 'true' if op.operacoes_transf_rel else 'false' }}"
                   data-data="{{ op.operacoes_data_lancamento }}"
                   data-cat="{{ op.operacoes_categoria or '' }}"
                   data-conta="{{ op.operacoes_conta }}"
@@ -1359,6 +1360,15 @@
 
   function openDuplicateModal(btn) {
     const d = btn.dataset;
+    const tipo = parseInt(d.tipo);
+    const isTransfRel = (d.transfRel === 'true');
+
+    // Transferências devem ser duplicadas pelo fluxo de transferência
+    if (tipo === 4) {
+      openDuplicateTransferModal(d.id);
+      return;
+    }
+
     const modal = document.getElementById('modalEditarRD');
     const form = document.getElementById('formEditarRD');
     const title = document.getElementById('editRDTitle');
@@ -1383,6 +1393,83 @@
     _setEfetivado('edit_rd', 0, null);
     form.style.display = '';
     openModal('modalEditarRD');
+  }
+
+  async function openDuplicateTransferModal(id) {
+    const modal = document.getElementById('modalNovaTransferencia');
+    const form = modal ? modal.querySelector('form') : null;
+    if (!modal || !form) return;
+
+    try {
+      const resp = await fetch(`/lancamentos/editar/${id}`);
+      const data = await resp.json();
+
+      form.action = '/lancamentos/transferir';
+      form.querySelector('[name="descricao"]').value = (data.descricao || 'Transferência') + ' (Cópia)';
+      form.querySelector('[name="valor"]').value = Math.abs(parseFloat(data.valor || 0)).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      const dataInput = document.getElementById('nova_transf_data');
+      if (dataInput) dataInput.value = data.data || '';
+      form.querySelector('[name="conta"]').value = data.conta || '';
+      form.querySelector('[name="conta_destino"]').value = data.conta_destino || '';
+
+      // Preserva repetição/parcelamento da transferência original quando houver
+      const chkRep = document.getElementById('checkRepetir');
+      const parcelaStr = data.parcela || '';
+      const recorrenciaId = data.recorrencia;
+      const isParcelada = !!parcelaStr;
+      const isRecorrente = !isParcelada && !!recorrenciaId;
+
+      if (chkRep) {
+        chkRep.checked = !!(isParcelada || isRecorrente);
+        if (typeof toggleRepetir === 'function') toggleRepetir('');
+      }
+
+      if (isParcelada || isRecorrente) {
+        const modo = isParcelada ? 'parcelado' : 'recorrente';
+        form.querySelectorAll('input[name="modo_repeticao"]').forEach(r => {
+          r.checked = (r.value === modo);
+        });
+        if (typeof toggleModoRepeticao === 'function') toggleModoRepeticao('');
+
+        if (isParcelada) {
+          const m = String(parcelaStr).match(/^\s*(\d+)\s*[\.\/-]\s*(\d+)\s*$/);
+          const totalParcelas = m ? parseInt(m[2], 10) : null;
+          const numParcelasInput = form.querySelector('[name="num_parcelas"]');
+          if (numParcelasInput && totalParcelas) numParcelasInput.value = totalParcelas;
+          const valRef = document.getElementById('valor_total_ou_parcela');
+          if (valRef) valRef.value = 'parcela';
+        }
+
+        if (isRecorrente) {
+          // Sem detalhes de frequência/ocorrências no payload de edição; mantém defaults do formulário
+          // e apenas preserva que se trata de uma duplicação recorrente.
+        }
+      } else {
+        // Garante estado limpo quando não houver repetição
+        form.querySelectorAll('input[name="modo_repeticao"]').forEach(r => {
+          r.checked = (r.value === 'parcelado');
+        });
+        if (typeof toggleModoRepeticao === 'function') toggleModoRepeticao('');
+      }
+
+      // Nova duplicação inicia como não efetivada
+      const chkEf = document.getElementById('nova_transf_efetivado_check');
+      if (chkEf) {
+        chkEf.checked = false;
+        if (typeof toggleDataEfetivado === 'function') toggleDataEfetivado('nova_transf');
+      }
+      const valEf = document.getElementById('nova_transf_efetivado_val');
+      if (valEf) valEf.value = '0';
+      const wrapEf = document.getElementById('nova_transf_data_efetivado_wrap');
+      if (wrapEf) wrapEf.style.display = 'none';
+      const dtEf = document.getElementById('nova_transf_data_efetivado');
+      if (dtEf) dtEf.value = '';
+
+      openModal('modalNovaTransferencia');
+    } catch (e) {
+      console.error(e);
+      alert('Não foi possível carregar os dados da transferência para duplicação.');
+    }
   }
 
 
