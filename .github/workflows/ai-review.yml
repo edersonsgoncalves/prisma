@@ -19,7 +19,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CONFIG.MODEL: "gemini-4-hydrogen"
+          CONFIG.MODEL: "gemini-2.5-flash"
           CONFIG.FALLBACK_MODELS: '["gemini/gemini-2.5-flash"]'
           PR_REVIEWER.ENABLE_SUMMARY: "true"
           PR_REVIEWER.ENABLE_CODE_SUGGESTIONS: "false"
