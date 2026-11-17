@@ -31,6 +31,9 @@ async def importar_page(
     )
 
 
+MAX_OFX_UPLOAD_BYTES = 4 * 1024 * 1024  # 4 MB
+
+
 # ---------------------------------------------------------------------------
 # POST /ofx/analisar  — recebe arquivo, devolve JSON com matches
 # ---------------------------------------------------------------------------
@@ -50,6 +53,8 @@ async def analisar(
             raise HTTPException(status_code=404, detail="Conta não encontrada.")
 
     conteudo = await arquivo.read()
+    if len(conteudo) > MAX_OFX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Arquivo OFX excede o limite de 4 MB.")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ofx") as tmp:
         tmp.write(conteudo)
         tmp_path = tmp.name
