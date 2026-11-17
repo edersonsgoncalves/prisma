@@ -5,7 +5,7 @@ from urllib.parse import parse_qs
 
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from itsdangerous import URLSafeSerializer, BadSignature
 
@@ -96,7 +96,29 @@ class CSRFMiddleware:
             ok = bool(submitted and cookie_sent and self._valid(submitted) and self._valid(cookie_sent)
                       and hmac.compare_digest(submitted, cookie_sent))
             if not ok:
-                resp = PlainTextResponse("CSRF token inválido ou ausente.", status_code=403)
+                reasons = []
+                if not cookie_sent:
+                    reasons.append("cookie ausente")
+                elif not self._valid(cookie_sent):
+                    reasons.append("cookie inválido")
+                if not submitted:
+                    reasons.append("token ausente")
+                elif not self._valid(submitted):
+                    reasons.append("token inválido")
+                if submitted and cookie_sent and self._valid(submitted) and self._valid(cookie_sent) and not hmac.compare_digest(submitted, cookie_sent):
+                    reasons.append("token diferente do cookie")
+                detail = "CSRF token inválido ou ausente."
+                if reasons:
+                    detail += " (" + ", ".join(reasons) + ")"
+                ctype = (request.headers.get("content-type") or "").lower()
+                wants_json = (
+                    "application/json" in (request.headers.get("accept") or "").lower()
+                    or "application/json" in ctype
+                    or bool(request.headers.get(HEADER_NAME))
+                    or (request.headers.get("x-requested-with") or "").lower() == "xmlhttprequest"
+                    or "multipart/form-data" in ctype
+                )
+                resp = JSONResponse({"detail": detail}, status_code=403) if wants_json else PlainTextResponse(detail, status_code=403)
                 # still ensure cookie set
                 if COOKIE_NAME not in request.cookies:
                     resp.set_cookie(COOKIE_NAME, cookie_token, httponly=False, samesite="lax", secure=request.url.scheme == "https", path="/")

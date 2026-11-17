@@ -480,7 +480,12 @@ async function uploadPDF(file) {
 
   try {
     uploadMsg.textContent = 'Extraindo lançamentos do PDF…';
-    const res = await fetch('/importar-fatura/upload', { method: 'POST', body: form });
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content
+      || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
+      || '';
+    const headers = {};
+    if (csrfToken) headers['X-CSRFToken'] = decodeURIComponent(csrfToken);
+    const res = await fetch('/importar-fatura/upload', { method: 'POST', headers, body: form });
     clearInterval(timer);
 
     if (!res.ok) {
@@ -924,9 +929,14 @@ async function confirmarImportacao() {
       operacao_id:     t.operacao_id,
     }));
 
+    const csrfTokenConfirm = (document.querySelector('meta[name="csrf-token"]') || {}).content
+      || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
+      || '';
+    const confirmHeaders = { 'Content-Type': 'application/json' };
+    if (csrfTokenConfirm) confirmHeaders['X-CSRFToken'] = decodeURIComponent(csrfTokenConfirm);
     const res = await fetch('/importar-fatura/confirmar-completo', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: confirmHeaders,
       body: JSON.stringify({ 
         conta_id: parseInt(contaId), 
         adicionais: portadoresDetectados.filter(p => p.is_novo),

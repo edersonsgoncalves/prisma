@@ -516,9 +516,14 @@ async function analisarArquivo() {
   if (contaId) fd.append('conta_id', contaId);
 
   try {
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content
+      || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
+      || '';
+    const headers = { ...authHeaders() };
+    if (csrfToken) headers['X-CSRFToken'] = decodeURIComponent(csrfToken);
     const r = await fetch('/ofx/analisar', {
       method: 'POST',
-      headers: authHeaders(),   // JWT no header
+      headers,
       body: fd,
     });
     if (!r.ok) {
@@ -794,9 +799,14 @@ async function executarImportacao() {
     }
 
     try {
+      const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content
+        || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
+        || '';
+      const efetivarHeaders = { 'Content-Type': 'application/json', ...authHeaders() };
+      if (csrfToken) efetivarHeaders['X-CSRFToken'] = decodeURIComponent(csrfToken);
       const r = await fetch('/ofx/efetivar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: efetivarHeaders,
         body: JSON.stringify({
           acao:     t.acao,
           fitid:    t.fitid,
