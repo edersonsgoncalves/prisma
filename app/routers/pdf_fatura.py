@@ -107,6 +107,9 @@ async def importar_fatura_page(
     })
 
 
+MAX_PDF_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 # ─── POST /importar-fatura/upload ─────────────────────────────────────────────
 
 @router.post("/upload")
@@ -125,6 +128,8 @@ async def upload_fatura(
         raise HTTPException(status_code=404, detail="Cartão não encontrado.")
 
     conteudo = await arquivo.read()
+    if len(conteudo) > MAX_PDF_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Arquivo PDF excede o limite de 10 MB.")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(conteudo)
         tmp_path = tmp.name
