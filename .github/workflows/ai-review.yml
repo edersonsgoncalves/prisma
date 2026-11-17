@@ -20,7 +20,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CONFIG.MODEL: "gemini/gemini-3.8-flash"
-          CONFIG.FALLBACK_MODELS: '["gemini/gemini-4-hydrogen"]'
+          CONFIG.FALLBACK_MODELS: '["gemini/gemini-3.7-flash", "gemini/gemini-4-hydrogen"]'
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
           PR_REVIEWER.ENABLE_SUMMARY: "true"
           PR_REVIEWER.ENABLE_CODE_SUGGESTIONS: "false"
