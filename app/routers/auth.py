@@ -44,8 +44,8 @@ async def login_post(
     return response
 
 
-@router.get("/logout")
+@router.post("/logout")
 async def logout():
-    response = RedirectResponse(url="/login", status_code=302)
+    response = RedirectResponse(url="/login", status_code=303)
     encerrar_sessao(response)
     return response
