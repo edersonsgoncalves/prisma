@@ -8,8 +8,6 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASS}
-    ports:
-      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 
@@ -18,17 +16,12 @@ services:
     container_name: prisma_app
     ports:
       - "7777:8000"
-    volumes:
-      - .:/app
     env_file:
       - .env
     depends_on:
       - db
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    environment:
-      - DEBUG=true
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   mysql_data:
