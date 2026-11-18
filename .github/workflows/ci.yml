@@ -1,0 +1,16 @@
+name: CI - Validação Python
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verificar sintaxe Python
+        run: python -m compileall .
