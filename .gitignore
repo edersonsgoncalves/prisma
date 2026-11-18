@@ -21,10 +21,9 @@ env/
 .env
 .env.*
 
-# Scripts de migração temporários (opcional, se quiser manter o repo limpo)
+# Scripts temporários locais
 tmp_*.py
 fix_*.py
-test_*.py
 
 # Dados e Backups
 mysql_revert/
