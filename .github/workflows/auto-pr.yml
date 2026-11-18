@@ -18,7 +18,7 @@ jobs:
 
       - name: Criar PR e ativar Auto-Merge
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           # Verifica se já existe um PR aberto de dev para main
           PR_NUMBER=$(gh pr list --base main --head dev --state open --json number -q '.[0].number')
