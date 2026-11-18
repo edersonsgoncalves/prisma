@@ -90,7 +90,7 @@ def analisar_ofx(
     for t in transacoes_raw:
         ofx = _normalizar(t)
         candidatos = _buscar_candidatos(ofx, db, conta_id)
-        melhor, score = _melhor_match(ofx, candidatos)
+        melhor, score, detalhes = _melhor_match(ofx, candidatos)
         classif = _classificar(score)
 
         resultado.append({
@@ -101,6 +101,7 @@ def analisar_ofx(
             "memo":          ofx["memo"],
             "score":         score,
             "classificacao": classif,
+            "scoreDetalhes": detalhes,
             "matchDb":       _serializar(melhor) if melhor else None,
         })
 
@@ -280,15 +281,29 @@ def _similaridade_memo(memo_ofx: str, memo_db: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def _calcular_score(ofx: dict, op: Operacao) -> int:
-    score = 0
+def _calcular_score(ofx: dict, op: Operacao) -> tuple[int, dict]:
+    detalhes = {
+        "fitid": "diferente",
+        "valor": None,
+        "data_dias": None,
+        "tipo": None,
+        "memo_ratio": 0.0,
+        "regras": [],
+    }
 
     # FITID idêntico → duplicidade certa, FITID diferente → já vinculado a outro, anula match
     fitid_db = getattr(op, "operacoes_fitid", None)
     if fitid_db:
         if fitid_db == ofx["fitid"]:
-            return SCORE_FITID_MATCH
-        return 0
+            detalhes["fitid"] = "igual"
+            detalhes["regras"].append("FITID idêntico (duplicidade)")
+            return SCORE_FITID_MATCH, detalhes
+        detalhes["fitid"] = "vinculado_outro"
+        detalhes["regras"].append("Lançamento já vinculado a outro FITID")
+        return 0, detalhes
+    detalhes["fitid"] = "ausente"
+
+    score = 0
 
     # Valor (tolerância estrita para evitar falsos positivos)
     v_db = abs(float(op.operacoes_valor or 0))
@@ -298,14 +313,19 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
     valor_muito_proximo = (not valor_exato) and diff_valor <= 0.05
     if valor_exato:
         score += SCORE_VALOR_EXATO
+        detalhes["valor"] = "exato"
     elif valor_muito_proximo:
         score += SCORE_VALOR_MUITO_PROXIMO
+        detalhes["valor"] = "muito_proximo"
+    else:
+        detalhes["valor"] = "diferente"
     # diferenças maiores não somam pontos de valor
 
     # Data
     diff_dias = None
     if op.operacoes_data_lancamento:
         diff_dias = abs((op.operacoes_data_lancamento - ofx["data"]).days)
+        detalhes["data_dias"] = diff_dias
         if diff_dias == 0:
             score += SCORE_DATA_EXATA
         elif diff_dias == 1:
@@ -318,6 +338,7 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
     # Tipo (C/D vs operacoes_tipo int)
     tipo_db = TIPO_INT_PARA_DC.get(op.operacoes_tipo, "D")
     tipo_compativel = tipo_db == ofx["tipo"]
+    detalhes["tipo"] = "compativel" if tipo_compativel else "incompativel"
     if tipo_compativel:
         score += SCORE_TIPO_IGUAL
     else:
@@ -325,6 +346,7 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
 
     # Similaridade de descrição
     ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+    detalhes["memo_ratio"] = round(ratio, 2)
     if ratio >= 0.85:
         score += SCORE_MEMO_ALTO
     elif ratio >= 0.70:
@@ -335,32 +357,39 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
         # valor plausível no pré-filtro, mas não suficientemente próximo
         if v_ofx > 0 and diff_valor / v_ofx > 0.02:
             score -= 25
+            detalhes["regras"].append("Penalidade: valor não próximo (>2%)")
         elif diff_valor > 0.10:
             score -= 15
+            detalhes["regras"].append("Penalidade: diferença de valor relevante")
     if diff_dias is not None and diff_dias > 3:
         score -= 10
+        detalhes["regras"].append("Penalidade: data distante (>3 dias)")
     if diff_dias is not None and diff_dias > 7:
         score -= 10
+        detalhes["regras"].append("Penalidade: data muito distante (>7 dias)")
 
     # Regras de consistência para pontuações altas
     if not tipo_compativel:
-        return min(score, THRESHOLD_FRACO - 1)
+        score = min(score, THRESHOLD_FRACO - 1)
+        detalhes["regras"].append("Limitado: tipo incompatível")
     if not (valor_exato or valor_muito_proximo):
-        # sem valor muito próximo, não promove como forte
-        return min(score, THRESHOLD_FORTE - 1)
+        score = min(score, THRESHOLD_FORTE - 1)
+        detalhes["regras"].append("Limitado: valor não suficientemente próximo")
     if diff_dias is not None and diff_dias > 3 and not valor_exato:
-        return min(score, THRESHOLD_FORTE - 1)
+        score = min(score, THRESHOLD_FORTE - 1)
+        detalhes["regras"].append("Limitado: data distante sem valor exato")
 
-    return max(score, 0)
+    score = max(score, 0)
+    return score, detalhes
 
 
-def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Operacao], int]:
-    melhor, melhor_score = None, 0
+def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Operacao], int, dict]:
+    melhor, melhor_score, melhor_detalhes = None, 0, {}
     for op in candidatos:
-        s = _calcular_score(ofx, op)
+        s, detalhes = _calcular_score(ofx, op)
         if s > melhor_score:
-            melhor_score, melhor = s, op
-    return melhor, melhor_score
+            melhor_score, melhor, melhor_detalhes = s, op, detalhes
+    return melhor, melhor_score, melhor_detalhes
 
 
 def _classificar(score: int) -> str:
