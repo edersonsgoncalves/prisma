@@ -31,19 +31,24 @@ from app.ofx_importer import OFXParser
 # PESOS E LIMIARES
 # ═══════════════════════════════════════════════════════════════════════════
 SCORE_FITID_MATCH = 100
-SCORE_VALOR_EXATO = 40
+SCORE_VALOR_EXATO = 45
+SCORE_VALOR_MUITO_PROXIMO = 15  # diferença mínima (centavos/arredondamento)
 SCORE_DATA_EXATA  = 30
 SCORE_DATA_1DIA   = 20
-SCORE_DATA_3DIAS  = 10
-SCORE_MEMO_80     = 20
+SCORE_DATA_2A3DIAS = 10
+SCORE_DATA_4A7DIAS = 3
+SCORE_MEMO_ALTO   = 15  # similaridade >= 0.85
+SCORE_MEMO_MEDIO  = 8   # similaridade >= 0.70
 SCORE_TIPO_IGUAL  = 10
-PENALIDADE_TIPO   = -60   # tipo OFX ≠ tipo DB → score cai para NOVO (máx teórico cross-tipo: 30)
+PENALIDADE_TIPO   = -60
 
 THRESHOLD_DUP    = 100
-THRESHOLD_FORTE  = 70
-THRESHOLD_FRACO  = 40
+THRESHOLD_FORTE  = 75
+THRESHOLD_FRACO  = 45
 
 JANELA_DIAS = 10
+VALOR_TOLERANCIA_PRE_FILTRO_ABS = 1.00
+VALOR_TOLERANCIA_PRE_FILTRO_PCT = 0.10  # 10% (apenas para pré-seleção de candidatos)
 
 # Mapeamento tipo OFX (int) → D/C
 # operacoes_tipo: 1=Receita, 3=Despesa, 4=Transferência (conforme extrato.html)
@@ -244,18 +249,35 @@ def _normalizar(t: dict) -> dict:
 def _buscar_candidatos(
     ofx: dict, db: Session, conta_id: Optional[int]
 ) -> list[Operacao]:
-    """Busca Operacoes com mesmo valor dentro da janela de datas."""
+    """Busca Operacoes na janela de datas (e conta, se informada) com valor plausível."""
     data_min = ofx["data"] - timedelta(days=JANELA_DIAS)
     data_max = ofx["data"] + timedelta(days=JANELA_DIAS)
 
     q = db.query(Operacao).filter(
         Operacao.operacoes_data_lancamento >= data_min,
         Operacao.operacoes_data_lancamento <= data_max,
+        Operacao.operacoes_validacao == 1,
     )
     if conta_id:
         q = q.filter(Operacao.operacoes_conta == conta_id)
 
-    return q.all()
+    candidatos = q.all()
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    limite = max(VALOR_TOLERANCIA_PRE_FILTRO_ABS, v_ofx * VALOR_TOLERANCIA_PRE_FILTRO_PCT)
+    plausiveis = []
+    for op in candidatos:
+        v_db = abs(float(op.operacoes_valor or 0))
+        if abs(v_db - v_ofx) <= limite:
+            plausiveis.append(op)
+    return plausiveis
+
+
+def _similaridade_memo(memo_ofx: str, memo_db: str) -> float:
+    a = " ".join((memo_ofx or "").lower().split())
+    b = " ".join((memo_db or "").lower().split())
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
 
 
 def _calcular_score(ofx: dict, op: Operacao) -> int:
@@ -266,45 +288,70 @@ def _calcular_score(ofx: dict, op: Operacao) -> int:
     if fitid_db:
         if fitid_db == ofx["fitid"]:
             return SCORE_FITID_MATCH
-        else:
-            return 0
+        return 0
 
-    # Valor
+    # Valor (tolerância estrita para evitar falsos positivos)
     v_db = abs(float(op.operacoes_valor or 0))
-    v_ofx = abs(ofx["valor"])
-    if abs(v_db - v_ofx) < 0.01:
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    diff_valor = abs(v_db - v_ofx)
+    valor_exato = diff_valor < 0.01
+    valor_muito_proximo = (not valor_exato) and diff_valor <= 0.05
+    if valor_exato:
         score += SCORE_VALOR_EXATO
-    elif v_ofx > 0:
-        diff = abs(v_db - v_ofx)
-        if diff <= 2.0 or diff / v_ofx <= 0.10:
-            score += 35  # Quase exato
-        elif diff <= 5.0 or diff / v_ofx <= 0.20:
-            score += 20  # Diferença tolerável
+    elif valor_muito_proximo:
+        score += SCORE_VALOR_MUITO_PROXIMO
+    # diferenças maiores não somam pontos de valor
 
     # Data
+    diff_dias = None
     if op.operacoes_data_lancamento:
-        diff = abs((op.operacoes_data_lancamento - ofx["data"]).days)
-        if diff == 0:   score += SCORE_DATA_EXATA
-        elif diff == 1: score += SCORE_DATA_1DIA
-        elif diff <= 3: score += SCORE_DATA_3DIAS
+        diff_dias = abs((op.operacoes_data_lancamento - ofx["data"]).days)
+        if diff_dias == 0:
+            score += SCORE_DATA_EXATA
+        elif diff_dias == 1:
+            score += SCORE_DATA_1DIA
+        elif diff_dias <= 3:
+            score += SCORE_DATA_2A3DIAS
+        elif diff_dias <= 7:
+            score += SCORE_DATA_4A7DIAS
 
     # Tipo (C/D vs operacoes_tipo int)
-    # Tipo igual: bônus. Tipo diferente: penalidade pesada que inviabiliza MATCH_FORTE.
     tipo_db = TIPO_INT_PARA_DC.get(op.operacoes_tipo, "D")
-    if tipo_db == ofx["tipo"]:
+    tipo_compativel = tipo_db == ofx["tipo"]
+    if tipo_compativel:
         score += SCORE_TIPO_IGUAL
     else:
         score += PENALIDADE_TIPO
 
     # Similaridade de descrição
-    memo_ofx = ofx["memo"].lower()
-    memo_db  = (op.operacoes_descricao or "").lower()
-    if memo_ofx and memo_db:
-        ratio = SequenceMatcher(None, memo_ofx, memo_db).ratio()
-        if ratio >= 0.80:
-            score += SCORE_MEMO_80
+    ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+    if ratio >= 0.85:
+        score += SCORE_MEMO_ALTO
+    elif ratio >= 0.70:
+        score += SCORE_MEMO_MEDIO
 
-    return score
+    # Penalidades para divergências relevantes (evita "match forte" com valor/data distantes)
+    if not valor_exato and not valor_muito_proximo:
+        # valor plausível no pré-filtro, mas não suficientemente próximo
+        if v_ofx > 0 and diff_valor / v_ofx > 0.02:
+            score -= 25
+        elif diff_valor > 0.10:
+            score -= 15
+    if diff_dias is not None and diff_dias > 3:
+        score -= 10
+    if diff_dias is not None and diff_dias > 7:
+        score -= 10
+
+    # Regras de consistência para pontuações altas
+    if not tipo_compativel:
+        return min(score, THRESHOLD_FRACO - 1)
+    if not (valor_exato or valor_muito_proximo):
+        # sem valor muito próximo, não promove como forte
+        return min(score, THRESHOLD_FORTE - 1)
+    if diff_dias is not None and diff_dias > 3 and not valor_exato:
+        return min(score, THRESHOLD_FORTE - 1)
+
+    return max(score, 0)
 
 
 def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Operacao], int]:
@@ -317,9 +364,12 @@ def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Opera
 
 
 def _classificar(score: int) -> str:
-    if score >= THRESHOLD_DUP:    return "DUPLICIDADE"
-    if score >= THRESHOLD_FORTE:  return "MATCH_FORTE"
-    if score >= THRESHOLD_FRACO:  return "MATCH_FRACO"
+    if score >= THRESHOLD_DUP:
+        return "DUPLICIDADE"
+    if score >= THRESHOLD_FORTE:
+        return "MATCH_FORTE"
+    if score >= THRESHOLD_FRACO:
+        return "MATCH_FRACO"
     return "NOVO"
 
 
