@@ -22,6 +22,8 @@ jobs:
           CONFIG.MODEL: "gemini/gemini-3.8-flash"
           CONFIG.FALLBACK_MODELS: '["gemini/gemini-3.7-flash", "gemini/gemini-4-hydrogen"]'
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1000000"
+          CONFIG.REASONING_EFFORT: "none"
+          GITHUB_ACTION_CONFIG.PR_ACTIONS: '["/review"]'
           PR_REVIEWER.ENABLE_SUMMARY: "true"
           PR_REVIEWER.ENABLE_CODE_SUGGESTIONS: "false"
           PR_REVIEWER.EXTRA_INSTRUCTIONS: |
