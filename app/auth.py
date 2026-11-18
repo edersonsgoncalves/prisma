@@ -2,6 +2,7 @@
 auth.py — Autenticação por sessão usando itsdangerous + bcrypt.
 Fornece: middleware de sessão, login, logout, proteção de rotas.
 """
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Usuario
 
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 _INSECURE_SECRET_DEFAULT = "dev-secret-troque-em-producao"
 
@@ -47,8 +48,8 @@ def _cookie_secure_default() -> bool:
 
 
 SECRET_KEY = _load_secret_key()
-COOKIE_NAME = os.getenv('SESSION_COOKIE_NAME', 'finorg_session')
-MAX_AGE_SEC = 60 * 60 * 8   # 8 horas
+COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "prisma_session")
+MAX_AGE_SEC = 60 * 60 * 8  # 8 horas
 COOKIE_SECURE = _cookie_secure_default()
 
 _serializer = URLSafeTimedSerializer(SECRET_KEY)
@@ -57,6 +58,7 @@ _serializer = URLSafeTimedSerializer(SECRET_KEY)
 # ──────────────────────────────────────────────
 # Helpers de sessão (cookie assinado)
 # ──────────────────────────────────────────────
+
 
 def criar_sessao(response, usuario_id: int, usuario_login: str) -> None:
     """Assina e grava o cookie de sessão na resposta."""
@@ -92,6 +94,7 @@ def encerrar_sessao(response) -> None:
 # Dependência FastAPI — usuário atual
 # ──────────────────────────────────────────────
 
+
 def get_usuario_atual(request: Request) -> dict:
     """
     Retorna dados do usuário logado.
@@ -112,6 +115,7 @@ def get_usuario_opcional(request: Request) -> Optional[dict]:
 # ──────────────────────────────────────────────
 # Proteção de rotas HTML (redireciona para login)
 # ──────────────────────────────────────────────
+
 
 def require_login(request: Request) -> dict:
     """
@@ -142,10 +146,14 @@ def _senha_bytes(senha: str) -> bytes:
 
 def verificar_credenciais(db: Session, login: str, senha: str) -> Optional[Usuario]:
     """Busca usuário e valida senha (bcrypt). Retorna o objeto Usuario ou None."""
-    usuario = db.query(Usuario).filter(
-        Usuario.usuario_login == login,
-        Usuario.usuario_ativo == 1,
-    ).first()
+    usuario = (
+        db.query(Usuario)
+        .filter(
+            Usuario.usuario_login == login,
+            Usuario.usuario_ativo == 1,
+        )
+        .first()
+    )
     if not usuario:
         return None
 

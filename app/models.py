@@ -1,14 +1,22 @@
 """
-models.py — Mapeamento SQLAlchemy das tabelas MySQL do FinOrg.
-Refatorado para o novo schema (FinOrg_Prod) com padronização snake_case e Foreign Keys.
+models.py — Mapeamento SQLAlchemy das tabelas MySQL do Pri$ma.
+Refatorado para o novo schema (Pri$ma_Prod) com padronização snake_case e Foreign Keys.
 """
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List
 
 from sqlalchemy import (
-    BigInteger, Date, DateTime, ForeignKey,
-    Integer, Numeric, SmallInteger, String, Text
+    BigInteger,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    SmallInteger,
+    String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,18 +74,25 @@ class ContaBancaria(Base):
     conta_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     nome_conta: Mapped[str] = mapped_column(String(100))
     tipo_conta: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    conta_moeda: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("contas_moedas.idcontas_moedas"), nullable=True)
+    conta_moeda: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("contas_moedas.idcontas_moedas"), nullable=True
+    )
     moeda_rel: Mapped[Optional["ContasMoeda"]] = relationship()
-    contas_limite: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
-    contas_cartao_fechamento: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    contas_limite: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
+    contas_cartao_fechamento: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
     contas_prev_debito: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    contas_desconsiderar_saldo: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    contas_desconsiderar_saldo: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
 
     operacoes: Mapped[List["Operacao"]] = relationship(back_populates="conta")
     faturas: Mapped[List["FaturaCartao"]] = relationship(back_populates="cartao")
     adicionais: Mapped[List["CartaoAdicional"]] = relationship(
-        back_populates="conta_mestre",
-        foreign_keys="[CartaoAdicional.conta_id]"
+        back_populates="conta_mestre", foreign_keys="[CartaoAdicional.conta_id]"
     )
 
 
@@ -93,8 +108,12 @@ class FaturaCartao(Base):
     )
     data_vencimento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     data_fechamento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    fechado: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True, default=0)
-    valor_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    fechado: Mapped[Optional[int]] = mapped_column(
+        SmallInteger, nullable=True, default=0
+    )
+    valor_total: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
     mes_referencia: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     cartao: Mapped[Optional[ContaBancaria]] = relationship(back_populates="faturas")
@@ -108,7 +127,9 @@ class CartaoAdicional(Base):
     __tablename__ = "cartoes_adicionais"
 
     adicional_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    conta_id: Mapped[int] = mapped_column(Integer, ForeignKey("contas_bancarias.conta_id"))
+    conta_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("contas_bancarias.conta_id")
+    )
     adicional_nome: Mapped[str] = mapped_column(String(100))
     cartao_final: Mapped[str] = mapped_column(String(10))
     apelido: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -162,16 +183,24 @@ class Operacao(Base):
     __tablename__ = "operacoes"
 
     operacoes_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    operacoes_data_lancamento: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    operacoes_descricao: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    operacoes_data_lancamento: Mapped[Optional[date]] = mapped_column(
+        Date, nullable=True
+    )
+    operacoes_descricao: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
     operacoes_conta: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("contas_bancarias.conta_id"), nullable=True
     )
-    operacoes_valor: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    operacoes_valor: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
     operacoes_tipo: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("tipos_operacoes.tipo_operacao_id"), nullable=True
     )
-    operacoes_transf_rel: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    operacoes_transf_rel: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
     operacoes_categoria: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("categorias.categorias_id"), nullable=True
     )
@@ -183,10 +212,16 @@ class Operacao(Base):
         Integer, ForeignKey("recorrencias.recorrencia_id"), nullable=True
     )
     operacoes_fitid: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    
-    operacoes_data_efetivado: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    operacoes_efetivado: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
-    operacoes_validacao: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
+
+    operacoes_data_efetivado: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    operacoes_efetivado: Mapped[Optional[int]] = mapped_column(
+        SmallInteger, nullable=True
+    )
+    operacoes_validacao: Mapped[Optional[int]] = mapped_column(
+        SmallInteger, nullable=True
+    )
     operacoes_projeto: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("projetos.projeto_id"), nullable=True
     )
@@ -199,7 +234,9 @@ class Operacao(Base):
     conta: Mapped[Optional[ContaBancaria]] = relationship(back_populates="operacoes")
     tipo: Mapped[Optional[TipoOperacao]] = relationship(back_populates="operacoes")
     fatura: Mapped[Optional[FaturaCartao]] = relationship(back_populates="operacoes")
-    recorrencia_obj: Mapped[Optional[Recorrencia]] = relationship(back_populates="operacoes")
+    recorrencia_obj: Mapped[Optional[Recorrencia]] = relationship(
+        back_populates="operacoes"
+    )
     projeto: Mapped[Optional[Projeto]] = relationship(back_populates="operacoes")
     adicional: Mapped[Optional[CartaoAdicional]] = relationship()
     categoria_obj: Mapped[Optional[Categoria]] = relationship(
@@ -241,7 +278,9 @@ class LogOperacao(Base):
         Integer, ForeignKey("usuarios.usuario_id"), nullable=True
     )
     log_acao: Mapped[str] = mapped_column(String(50))  # INSERT, UPDATE, DELETE, SYSTEM
-    log_entidade: Mapped[str] = mapped_column(String(50))  # OPERACAO, FATURA, CATEGORIA, etc
+    log_entidade: Mapped[str] = mapped_column(
+        String(50)
+    )  # OPERACAO, FATURA, CATEGORIA, etc
     log_entidade_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     log_detalhes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     log_lido: Mapped[int] = mapped_column(SmallInteger, default=0)
@@ -255,11 +294,21 @@ class ContasMoeda(Base):
 
     idcontas_moedas: Mapped[int] = mapped_column(Integer, primary_key=True)
     contas_moedas_nome: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    contas_moedas_abrev: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    contas_moedas_simbolo: Mapped[Optional[str]] = mapped_column(String(4), nullable=True)
-    contas_moedas_bandeira: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    contas_moedas_cotacao: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
-    contas_moeda_cotacao_data: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    contas_moedas_abrev: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True
+    )
+    contas_moedas_simbolo: Mapped[Optional[str]] = mapped_column(
+        String(4), nullable=True
+    )
+    contas_moedas_bandeira: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True
+    )
+    contas_moedas_cotacao: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    contas_moeda_cotacao_data: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
 
 
 # ──────────────────────────────────────────────
