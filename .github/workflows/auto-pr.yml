@@ -1,0 +1,39 @@
+name: Auto PR e Auto-Merge (dev -> main)
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-and-merge-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Criar PR e ativar Auto-Merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Verifica se já existe um PR aberto de dev para main
+          PR_NUMBER=$(gh pr list --base main --head dev --state open --json number -q '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Criando novo Pull Request de dev para main..."
+            PR_URL=$(gh pr create \
+              --base main \
+              --head dev \
+              --title "chore(release): deploy automático da branch dev" \
+              --body "Pull Request gerado automaticamente pela esteira de CI/CD.")
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+          else
+            echo "PR #$PR_NUMBER já está aberto. Atualizando..."
+          fi
+
+          # Ativa o auto-merge (só executa o merge quando todos os checks obrigatórios passarem)
+          gh pr merge "$PR_NUMBER" --auto --merge
