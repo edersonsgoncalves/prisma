@@ -1,6 +1,7 @@
 """
-main.py — Aplicação FastAPI principal do FinOrg.
+main.py — Aplicação FastAPI principal do Pri$ma.
 """
+
 import os
 from pathlib import Path
 
@@ -12,23 +13,44 @@ from app.templates import templates
 
 from app.database import engine, Base
 from app.models import Usuario
-from app.auth import require_login, verificar_credenciais, criar_sessao, encerrar_sessao, hash_senha, SECRET_KEY
-from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
+from app.auth import (
+    require_login,
+    verificar_credenciais,
+    criar_sessao,
+    encerrar_sessao,
+    hash_senha,
+    SECRET_KEY,
+)
+from app.helpers import (
+    formata_moeda_brl,
+    mostra_data,
+    cor_valor,
+    mes_por_extenso,
+    formata_parcela,
+)
 from app.csrf import CSRFMiddleware
 
 # Importação dos routers
 # Importação dos routers
 from app.routers import (
-    dashboard, extrato, contas, faturas, categorias,
-    projetos, recorrencias, relatorios, notificacoes,
-    lancamentos, lancamentos_faturas, lancamentos_transfers
+    dashboard,
+    extrato,
+    contas,
+    faturas,
+    categorias,
+    projetos,
+    recorrencias,
+    relatorios,
+    notificacoes,
+    lancamentos,
+    lancamentos_faturas,
+    lancamentos_transfers,
 )
 from app.routers import auth as auth_router
 from app.routers.ofx import router as ofx_router
 from app.routers.pdf_fatura import router as pdf_fatura_router
 
-
-load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -48,7 +70,9 @@ app = FastAPI(
 app.add_middleware(CSRFMiddleware, secret=SECRET_KEY)
 
 # ── Arquivos estáticos ─────────────────────────────
-app.mount("/static", StaticFiles(directory=str(BASE_DIR.parent / "static")), name="static")
+app.mount(
+    "/static", StaticFiles(directory=str(BASE_DIR.parent / "static")), name="static"
+)
 
 # templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -73,6 +97,7 @@ app.include_router(pdf_fatura_router)
 @app.get("/", include_in_schema=False)
 async def root():
     return RedirectResponse(url="/dashboard")
+
 
 @app.get("/ping")
 async def ping():
