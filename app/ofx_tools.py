@@ -336,12 +336,25 @@ def _buscar_candidatos(
     return plausiveis
 
 
+def _normalizar_texto_memo(texto: str) -> str:
+    import re
+    t = (texto or "").lower()
+    t = re.sub(r"[^a-z0-9áàâãéêíóôõúç\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
 def _similaridade_memo(memo_ofx: str, memo_db: str) -> float:
-    a = " ".join((memo_ofx or "").lower().split())
-    b = " ".join((memo_db or "").lower().split())
+    a = _normalizar_texto_memo(memo_ofx)
+    b = _normalizar_texto_memo(memo_db)
     if not a or not b:
         return 0.0
-    return SequenceMatcher(None, a, b).ratio()
+    # usa a melhor entre comparação direta e por tokens únicos ordenados
+    ratio_direto = SequenceMatcher(None, a, b).ratio()
+    ta = " ".join(sorted(set(a.split())))
+    tb = " ".join(sorted(set(b.split())))
+    ratio_tokens = SequenceMatcher(None, ta, tb).ratio() if ta and tb else 0.0
+    return max(ratio_direto, ratio_tokens)
 
 
 def _calcular_score(ofx: dict, op: Operacao) -> tuple[int, dict]:
