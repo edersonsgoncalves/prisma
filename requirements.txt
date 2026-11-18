@@ -21,7 +21,6 @@ Jinja2==3.1.5
 MarkupSafe==3.0.3
 mysql-connector-python==9.6.0
 packaging==26.0
-passlib==1.7.4
 pdfminer.six==20251230
 pdfplumber==0.11.9
 pillow==12.1.1
@@ -48,5 +47,4 @@ tzlocal==5.3.1
 uvicorn==0.34.0
 watchfiles==1.1.1
 websockets==16.0
-starlette-csrf==3.0.0
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Optional
+import uuid
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -31,19 +32,24 @@ from app.ofx_importer import OFXParser
 # PESOS E LIMIARES
 # ═══════════════════════════════════════════════════════════════════════════
 SCORE_FITID_MATCH = 100
-SCORE_VALOR_EXATO = 40
+SCORE_VALOR_EXATO = 45
+SCORE_VALOR_MUITO_PROXIMO = 15  # diferença mínima (centavos/arredondamento)
 SCORE_DATA_EXATA  = 30
 SCORE_DATA_1DIA   = 20
-SCORE_DATA_3DIAS  = 10
-SCORE_MEMO_80     = 20
+SCORE_DATA_2A3DIAS = 10
+SCORE_DATA_4A7DIAS = 3
+SCORE_MEMO_ALTO   = 15  # similaridade >= 0.85
+SCORE_MEMO_MEDIO  = 8   # similaridade >= 0.70
 SCORE_TIPO_IGUAL  = 10
-PENALIDADE_TIPO   = -60   # tipo OFX ≠ tipo DB → score cai para NOVO (máx teórico cross-tipo: 30)
+PENALIDADE_TIPO   = -60
 
 THRESHOLD_DUP    = 100
-THRESHOLD_FORTE  = 70
-THRESHOLD_FRACO  = 40
+THRESHOLD_FORTE  = 75
+THRESHOLD_FRACO  = 45
 
 JANELA_DIAS = 10
+VALOR_TOLERANCIA_PRE_FILTRO_ABS = 1.00
+VALOR_TOLERANCIA_PRE_FILTRO_PCT = 0.10  # 10% (apenas para pré-seleção de candidatos)
 
 # Mapeamento tipo OFX (int) → D/C
 # operacoes_tipo: 1=Receita, 3=Despesa, 4=Transferência (conforme extrato.html)
@@ -58,10 +64,12 @@ class EfetivarPayload(BaseModel):
     fitid: str
     data: str               # ISO: YYYY-MM-DD
     valor: float
-    tipo: str               # "C" crédito | "D" débito
+    tipo: str               # "C" crédito | "D" débito (tipo do OFX)
     memo: Optional[str] = None
     match_id: Optional[int] = None   # operacoes_id do lançamento existente
-    conta_id: Optional[int] = None   # conta_id de contas_bancarias
+    conta_id: Optional[int] = None   # conta_id de contas_bancarias (conta do extrato)
+    conta_destino: Optional[int] = None  # contraparte para transferência
+    tipo_operacao: Optional[int] = None  # 1=Receita, 3=Despesa, 4=Transferência (para inserir)
     como_efetivado: bool = True      # status de conciliação
 
 
@@ -85,8 +93,9 @@ def analisar_ofx(
     for t in transacoes_raw:
         ofx = _normalizar(t)
         candidatos = _buscar_candidatos(ofx, db, conta_id)
-        melhor, score = _melhor_match(ofx, candidatos)
+        melhor, score, detalhes = _melhor_match(ofx, candidatos)
         classif = _classificar(score)
+        sugestao_transferencia = _sugerir_transferencia(ofx, db, conta_id, melhor)
 
         resultado.append({
             "fitid":         ofx["fitid"],
@@ -96,7 +105,9 @@ def analisar_ofx(
             "memo":          ofx["memo"],
             "score":         score,
             "classificacao": classif,
+            "scoreDetalhes": detalhes,
             "matchDb":       _serializar(melhor) if melhor else None,
+            "sugestaoTransferencia": sugestao_transferencia,
         })
 
     return {"transacoes": resultado}
@@ -119,8 +130,8 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
         return {"status": "ignorado"}
 
     data_lancamento = date.fromisoformat(payload.data)
-    # C=Receita(1) / D=Despesa(3)
-    tipo_int = 1 if payload.tipo == "C" else 3
+    # Tipo de operação para inserção: 1=Receita, 3=Despesa, 4=Transferência
+    tipo_int = payload.tipo_operacao or (1 if payload.tipo == "C" else 3)
 
     # ── EFETIVAR / FORÇAR ─────────────────────────────────────────────────
     if payload.acao in ("efetivar", "forcar"):
@@ -135,8 +146,12 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             raise ValueError(f"Operação {payload.match_id} não encontrada.")
 
         # Sobrescrever data e valor sempre com os dados do OFX:
-        op.operacoes_data_lancamento = data_lancamento
-        op.operacoes_valor = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
+        # para transferências preserva o sinal do lançamento conciliado (lado do par)
+        if op.operacoes_tipo == 4:
+            sinal = -1 if float(op.operacoes_valor or 0) < 0 else 1
+            op.operacoes_valor = abs(payload.valor) * sinal
+        else:
+            op.operacoes_valor = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
 
         # Concatenar a descrição do OFX (até 20 caracteres)
         memo_str = (payload.memo or "").strip()[:20]
@@ -144,12 +159,12 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             nova_desc = f"{op.operacoes_descricao or ''} ({memo_str})".strip()
             op.operacoes_descricao = nova_desc[:255]
 
-        op.operacoes_efetivado        = 1 if payload.como_efetivado else 0
+        op.operacoes_efetivado = 1 if payload.como_efetivado else 0
         if payload.como_efetivado:
             op.operacoes_data_efetivado = datetime.combine(data_lancamento, datetime.min.time())
         else:
             op.operacoes_data_efetivado = None
-        op.operacoes_fitid            = payload.fitid   # requer migration (ver docstring)
+        op.operacoes_fitid = payload.fitid   # requer migration (ver docstring)
         db.commit()
         return {"status": "efetivado", "id": op.operacoes_id}
 
@@ -166,17 +181,73 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             if not conta:
                 raise ValueError("Nenhuma conta cadastrada no sistema.")
 
-        valor_op = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
+        descricao = (payload.memo or "Importado via OFX").strip() or "Importado via OFX"
+        dt_efet = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None
+
+        # Transferência: cria par de operações vinculadas
+        if tipo_int == 4:
+            if not payload.conta_destino:
+                raise ValueError("Selecione a conta de destino para inserir como transferência.")
+            if int(payload.conta_destino) == int(conta.conta_id):
+                raise ValueError("Conta de destino deve ser diferente da conta de origem.")
+
+            conta_destino = db.query(ContaBancaria).filter(
+                ContaBancaria.conta_id == payload.conta_destino
+            ).first()
+            if not conta_destino:
+                raise ValueError("Conta de destino não encontrada.")
+
+            grupo_id = f"TRF-OFX-{uuid.uuid4().hex[:8]}"
+            # OFX D: saída da conta do extrato -> destino; OFX C: entrada na conta do extrato <- origem
+            if payload.tipo == "D":
+                conta_saida_id = conta.conta_id
+                conta_entrada_id = conta_destino.conta_id
+            else:
+                conta_saida_id = conta_destino.conta_id
+                conta_entrada_id = conta.conta_id
+
+            op_saida = Operacao(
+                operacoes_data_lancamento=data_lancamento,
+                operacoes_descricao=descricao,
+                operacoes_conta=conta_saida_id,
+                operacoes_valor=-abs(payload.valor),
+                operacoes_tipo=4,
+                operacoes_efetivado=1 if payload.como_efetivado else 0,
+                operacoes_data_efetivado=dt_efet,
+                operacoes_fitid=payload.fitid,
+                operacoes_validacao=1,
+                operacoes_grupo_id=grupo_id,
+            )
+            op_entrada = Operacao(
+                operacoes_data_lancamento=data_lancamento,
+                operacoes_descricao=descricao,
+                operacoes_conta=conta_entrada_id,
+                operacoes_valor=abs(payload.valor),
+                operacoes_tipo=4,
+                operacoes_efetivado=1 if payload.como_efetivado else 0,
+                operacoes_data_efetivado=dt_efet,
+                operacoes_validacao=1,
+                operacoes_grupo_id=grupo_id,
+            )
+            db.add(op_saida)
+            db.add(op_entrada)
+            db.flush()
+            op_saida.operacoes_transf_rel = op_entrada.operacoes_id
+            op_entrada.operacoes_transf_rel = op_saida.operacoes_id
+            db.commit()
+            return {"status": "inserido", "id": op_saida.operacoes_id, "id_rel": op_entrada.operacoes_id}
+
+        valor_op = -abs(payload.valor) if tipo_int == 3 else abs(payload.valor)
         nova = Operacao(
-            operacoes_data_lancamento = data_lancamento,
-            operacoes_descricao       = payload.memo or "Importado via OFX",
-            operacoes_conta           = conta.conta_id,
-            operacoes_valor           = valor_op,
-            operacoes_tipo            = tipo_int,
-            operacoes_efetivado       = 1 if payload.como_efetivado else 0,
-            operacoes_data_efetivado  = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None,
-            operacoes_fitid           = payload.fitid,
-            operacoes_validacao       = 1,
+            operacoes_data_lancamento=data_lancamento,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta.conta_id,
+            operacoes_valor=valor_op,
+            operacoes_tipo=tipo_int,
+            operacoes_efetivado=1 if payload.como_efetivado else 0,
+            operacoes_data_efetivado=dt_efet,
+            operacoes_fitid=payload.fitid,
+            operacoes_validacao=1,
         )
         db.add(nova)
         db.commit()
@@ -189,6 +260,91 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 # HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melhor_match: Optional[Operacao]) -> Optional[dict]:
+    """Sugere classificação como transferência quando há contraparte plausível em outra conta."""
+    # Se já há match forte de duplicidade/concorrência exata na mesma conta, evita sugerir transferência
+    if melhor_match and getattr(melhor_match, "operacoes_fitid", None) == ofx.get("fitid"):
+        return None
+
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    if v_ofx <= 0:
+        return None
+
+    data_ref = ofx["data"]
+    data_min = data_ref - timedelta(days=3)
+    data_max = data_ref + timedelta(days=3)
+
+    # OFX D (saída da conta importada) => provável entrada (+) em outra conta
+    # OFX C (entrada na conta importada) => provável saída (-) em outra conta
+    if ofx["tipo"] == "D":
+        cond_valor = Operacao.operacoes_valor > 0
+    else:
+        cond_valor = Operacao.operacoes_valor < 0
+
+    q = db.query(Operacao).filter(
+        Operacao.operacoes_data_lancamento >= data_min,
+        Operacao.operacoes_data_lancamento <= data_max,
+        Operacao.operacoes_validacao == 1,
+        cond_valor,
+    )
+    if conta_id:
+        q = q.filter(Operacao.operacoes_conta != conta_id)
+
+    candidatos = q.all()
+    melhor = None
+    melhor_score = -1
+    melhor_motivo = ""
+
+    for op in candidatos:
+        v_db = abs(float(op.operacoes_valor or 0))
+        diff_valor = abs(v_db - v_ofx)
+        if diff_valor > 0.05:
+            continue
+        diff_dias = abs((op.operacoes_data_lancamento - data_ref).days) if op.operacoes_data_lancamento else 99
+        score = 0
+        motivo_partes = []
+        if diff_valor < 0.01:
+            score += 60
+            motivo_partes.append("valor igual")
+        else:
+            score += 45
+            motivo_partes.append("valor muito próximo")
+        if diff_dias == 0:
+            score += 30
+            motivo_partes.append("mesma data")
+        elif diff_dias == 1:
+            score += 20
+            motivo_partes.append("1 dia de diferença")
+        elif diff_dias <= 3:
+            score += 10
+            motivo_partes.append(f"{diff_dias} dias de diferença")
+        # bônus se já for transferência ou descrição semelhante
+        if int(op.operacoes_tipo or 0) == 4:
+            score += 10
+            motivo_partes.append("contraparte já é transferência")
+        ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+        if ratio >= 0.7:
+            score += 10
+            motivo_partes.append("descrição semelhante")
+
+        if score > melhor_score:
+            melhor_score = score
+            melhor = op
+            melhor_motivo = ", ".join(motivo_partes)
+
+    # limiar para sugerir
+    if not melhor or melhor_score < 70:
+        return None
+
+    conta_contraparte = melhor.operacoes_conta
+    return {
+        "conta_destino": conta_contraparte,
+        "operacao_contraparte_id": melhor.operacoes_id,
+        "motivo": melhor_motivo or "contraparte compatível encontrada em outra conta",
+        "score": melhor_score,
+    }
 
 TRNTYPE_MAP = {
     "DEBIT": "D", "CREDIT": "C", "INT": "C", "DIV": "C",
@@ -244,82 +400,168 @@ def _normalizar(t: dict) -> dict:
 def _buscar_candidatos(
     ofx: dict, db: Session, conta_id: Optional[int]
 ) -> list[Operacao]:
-    """Busca Operacoes com mesmo valor dentro da janela de datas."""
+    """Busca Operacoes na janela de datas (e conta, se informada) com valor plausível."""
     data_min = ofx["data"] - timedelta(days=JANELA_DIAS)
     data_max = ofx["data"] + timedelta(days=JANELA_DIAS)
 
     q = db.query(Operacao).filter(
         Operacao.operacoes_data_lancamento >= data_min,
         Operacao.operacoes_data_lancamento <= data_max,
+        Operacao.operacoes_validacao == 1,
     )
     if conta_id:
         q = q.filter(Operacao.operacoes_conta == conta_id)
 
-    return q.all()
+    candidatos = q.all()
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    limite = max(VALOR_TOLERANCIA_PRE_FILTRO_ABS, v_ofx * VALOR_TOLERANCIA_PRE_FILTRO_PCT)
+    plausiveis = []
+    for op in candidatos:
+        v_db = abs(float(op.operacoes_valor or 0))
+        if abs(v_db - v_ofx) <= limite:
+            plausiveis.append(op)
+    return plausiveis
 
 
-def _calcular_score(ofx: dict, op: Operacao) -> int:
-    score = 0
+def _normalizar_texto_memo(texto: str) -> str:
+    import re
+    t = (texto or "").lower()
+    t = re.sub(r"[^a-z0-9áàâãéêíóôõúç\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _similaridade_memo(memo_ofx: str, memo_db: str) -> float:
+    a = _normalizar_texto_memo(memo_ofx)
+    b = _normalizar_texto_memo(memo_db)
+    if not a or not b:
+        return 0.0
+    # usa a melhor entre comparação direta e por tokens únicos ordenados
+    ratio_direto = SequenceMatcher(None, a, b).ratio()
+    ta = " ".join(sorted(set(a.split())))
+    tb = " ".join(sorted(set(b.split())))
+    ratio_tokens = SequenceMatcher(None, ta, tb).ratio() if ta and tb else 0.0
+    return max(ratio_direto, ratio_tokens)
+
+
+def _calcular_score(ofx: dict, op: Operacao) -> tuple[int, dict]:
+    detalhes = {
+        "fitid": "diferente",
+        "valor": None,
+        "data_dias": None,
+        "tipo": None,
+        "memo_ratio": 0.0,
+        "regras": [],
+    }
 
     # FITID idêntico → duplicidade certa, FITID diferente → já vinculado a outro, anula match
     fitid_db = getattr(op, "operacoes_fitid", None)
     if fitid_db:
         if fitid_db == ofx["fitid"]:
-            return SCORE_FITID_MATCH
-        else:
-            return 0
+            detalhes["fitid"] = "igual"
+            detalhes["regras"].append("FITID idêntico (duplicidade)")
+            return SCORE_FITID_MATCH, detalhes
+        detalhes["fitid"] = "vinculado_outro"
+        detalhes["regras"].append("Lançamento já vinculado a outro FITID")
+        return 0, detalhes
+    detalhes["fitid"] = "ausente"
 
-    # Valor
+    score = 0
+
+    # Valor (tolerância estrita para evitar falsos positivos)
     v_db = abs(float(op.operacoes_valor or 0))
-    v_ofx = abs(ofx["valor"])
-    if abs(v_db - v_ofx) < 0.01:
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    diff_valor = abs(v_db - v_ofx)
+    valor_exato = diff_valor < 0.01
+    valor_muito_proximo = (not valor_exato) and diff_valor <= 0.05
+    if valor_exato:
         score += SCORE_VALOR_EXATO
-    elif v_ofx > 0:
-        diff = abs(v_db - v_ofx)
-        if diff <= 2.0 or diff / v_ofx <= 0.10:
-            score += 35  # Quase exato
-        elif diff <= 5.0 or diff / v_ofx <= 0.20:
-            score += 20  # Diferença tolerável
+        detalhes["valor"] = "exato"
+    elif valor_muito_proximo:
+        score += SCORE_VALOR_MUITO_PROXIMO
+        detalhes["valor"] = "muito_proximo"
+    else:
+        detalhes["valor"] = "diferente"
+    # diferenças maiores não somam pontos de valor
 
     # Data
+    diff_dias = None
     if op.operacoes_data_lancamento:
-        diff = abs((op.operacoes_data_lancamento - ofx["data"]).days)
-        if diff == 0:   score += SCORE_DATA_EXATA
-        elif diff == 1: score += SCORE_DATA_1DIA
-        elif diff <= 3: score += SCORE_DATA_3DIAS
+        diff_dias = abs((op.operacoes_data_lancamento - ofx["data"]).days)
+        detalhes["data_dias"] = diff_dias
+        if diff_dias == 0:
+            score += SCORE_DATA_EXATA
+        elif diff_dias == 1:
+            score += SCORE_DATA_1DIA
+        elif diff_dias <= 3:
+            score += SCORE_DATA_2A3DIAS
+        elif diff_dias <= 7:
+            score += SCORE_DATA_4A7DIAS
 
     # Tipo (C/D vs operacoes_tipo int)
-    # Tipo igual: bônus. Tipo diferente: penalidade pesada que inviabiliza MATCH_FORTE.
     tipo_db = TIPO_INT_PARA_DC.get(op.operacoes_tipo, "D")
-    if tipo_db == ofx["tipo"]:
+    tipo_compativel = tipo_db == ofx["tipo"]
+    detalhes["tipo"] = "compativel" if tipo_compativel else "incompativel"
+    if tipo_compativel:
         score += SCORE_TIPO_IGUAL
     else:
         score += PENALIDADE_TIPO
 
     # Similaridade de descrição
-    memo_ofx = ofx["memo"].lower()
-    memo_db  = (op.operacoes_descricao or "").lower()
-    if memo_ofx and memo_db:
-        ratio = SequenceMatcher(None, memo_ofx, memo_db).ratio()
-        if ratio >= 0.80:
-            score += SCORE_MEMO_80
+    ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+    detalhes["memo_ratio"] = round(ratio, 2)
+    if ratio >= 0.85:
+        score += SCORE_MEMO_ALTO
+    elif ratio >= 0.70:
+        score += SCORE_MEMO_MEDIO
 
-    return score
+    # Penalidades para divergências relevantes (evita "match forte" com valor/data distantes)
+    if not valor_exato and not valor_muito_proximo:
+        # valor plausível no pré-filtro, mas não suficientemente próximo
+        if v_ofx > 0 and diff_valor / v_ofx > 0.02:
+            score -= 25
+            detalhes["regras"].append("Penalidade: valor não próximo (>2%)")
+        elif diff_valor > 0.10:
+            score -= 15
+            detalhes["regras"].append("Penalidade: diferença de valor relevante")
+    if diff_dias is not None and diff_dias > 3:
+        score -= 10
+        detalhes["regras"].append("Penalidade: data distante (>3 dias)")
+    if diff_dias is not None and diff_dias > 7:
+        score -= 10
+        detalhes["regras"].append("Penalidade: data muito distante (>7 dias)")
+
+    # Regras de consistência para pontuações altas
+    if not tipo_compativel:
+        score = min(score, THRESHOLD_FRACO - 1)
+        detalhes["regras"].append("Limitado: tipo incompatível")
+    if not (valor_exato or valor_muito_proximo):
+        score = min(score, THRESHOLD_FORTE - 1)
+        detalhes["regras"].append("Limitado: valor não suficientemente próximo")
+    if diff_dias is not None and diff_dias > 3 and not valor_exato:
+        score = min(score, THRESHOLD_FORTE - 1)
+        detalhes["regras"].append("Limitado: data distante sem valor exato")
+
+    score = max(score, 0)
+    return score, detalhes
 
 
-def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Operacao], int]:
-    melhor, melhor_score = None, 0
+def _melhor_match(ofx: dict, candidatos: list[Operacao]) -> tuple[Optional[Operacao], int, dict]:
+    melhor, melhor_score, melhor_detalhes = None, 0, {}
     for op in candidatos:
-        s = _calcular_score(ofx, op)
+        s, detalhes = _calcular_score(ofx, op)
         if s > melhor_score:
-            melhor_score, melhor = s, op
-    return melhor, melhor_score
+            melhor_score, melhor, melhor_detalhes = s, op, detalhes
+    return melhor, melhor_score, melhor_detalhes
 
 
 def _classificar(score: int) -> str:
-    if score >= THRESHOLD_DUP:    return "DUPLICIDADE"
-    if score >= THRESHOLD_FORTE:  return "MATCH_FORTE"
-    if score >= THRESHOLD_FRACO:  return "MATCH_FRACO"
+    if score >= THRESHOLD_DUP:
+        return "DUPLICIDADE"
+    if score >= THRESHOLD_FORTE:
+        return "MATCH_FORTE"
+    if score >= THRESHOLD_FRACO:
+        return "MATCH_FRACO"
     return "NOVO"
 
 

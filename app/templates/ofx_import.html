@@ -263,11 +263,12 @@
             <th style="padding:8px 12px; text-align:left;">Descrição</th>
             <th style="padding:8px 12px; text-align:right;">Valor</th>
             <th style="padding:8px 12px; text-align:left;">Ação</th>
+            <th style="padding:8px 12px; text-align:left;">Classificação</th>
             <th style="padding:8px 12px; text-align:left;">Match</th>
           </tr>
         </thead>
         <tbody id="tbodyConfirm">
-          <tr><td colspan="5" class="text-muted" style="padding:16px; text-align:center;">—</td></tr>
+          <tr><td colspan="6" class="text-muted" style="padding:16px; text-align:center;">—</td></tr>
         </tbody>
       </table>
     </div>
@@ -419,6 +420,31 @@ let ofxTransacoes = [];
 let selectedFile  = null;
 let contaId       = null;
 
+const CONTAS_OFX = [
+{% for conta in contas %}
+  { id: {{ conta.conta_id }}, nome: {{ conta.nome_conta|tojson }} },
+{% endfor %}
+];
+
+function defaultTipoOperacao(ofxTipo) {
+  return ofxTipo === 'C' ? 1 : 3;
+}
+function tipoOperacaoLabel(v) {
+  if (v === 4) return 'Transferência';
+  if (v === 1) return 'Receita';
+  return 'Despesa';
+}
+function contasDestinoOptions(selectedId) {
+  const origem = contaId ? parseInt(contaId) : null;
+  let html = '<option value="">Conta destino...</option>';
+  for (const c of CONTAS_OFX) {
+    if (origem && c.id === origem) continue;
+    const sel = (String(selectedId || '') === String(c.id)) ? ' selected' : '';
+    html += `<option value="${c.id}"${sel}>${esc(c.nome)}</option>`;
+  }
+  return html;
+}
+
 /* =========================================================================
    TOKEN JWT — pega do cookie "access_token" (ajuste se necessário)
 ========================================================================= */
@@ -551,9 +577,21 @@ function buildRevisao() {
   const rows = ofxTransacoes.map((t, i) => {
     total++;
     let isDup = false;
+    if (t.tipo_operacao == null) t.tipo_operacao = defaultTipoOperacao(t.tipo);
+    if (t.conta_destino == null) t.conta_destino = '';
+    if (t._sugestaoAplicada == null) t._sugestaoAplicada = false;
+
     if (t.classificacao === 'DUPLICIDADE')                               { dup++;   t.acao = 'ignorar'; isDup = true; }
     else if (['MATCH_FORTE','MATCH_FRACO'].includes(t.classificacao))    { match++;  t.acao = 'efetivar'; }
     else                                                                  { novo++;   t.acao = 'inserir'; }
+
+    // Sugestão automática de transferência para novos lançamentos
+    if (t.classificacao === 'NOVO' && t.sugestaoTransferencia && !t._sugestaoAplicada) {
+      t.tipo_operacao = 4;
+      if (t.sugestaoTransferencia.conta_destino) t.conta_destino = t.sugestaoTransferencia.conta_destino;
+      t._sugestaoAplicada = true;
+    }
+
     return buildRow(t, i, isDup);
   }).join('');
 
@@ -589,7 +627,24 @@ function buildRow(t, i, isDup) {
     opts = `<option value="efetivar" selected>Efetivar match</option><option value="inserir">Inserir como novo</option><option value="ignorar">Ignorar</option>`;
   }
 
+  const podeClassificar = t.acao !== 'efetivar' && t.acao !== 'forcar';
+  const tipoSel = `
+    <select class="form-control" style="font-size:11px; padding:3px 6px; height:auto; margin-top:4px; ${podeClassificar ? '' : 'display:none;'}"
+            onchange="setTipoOperacao(${i}, this.value)" title="Classificação">
+      <option value="3" ${parseInt(t.tipo_operacao,10)===3 ? 'selected' : ''}>Despesa</option>
+      <option value="1" ${parseInt(t.tipo_operacao,10)===1 ? 'selected' : ''}>Receita</option>
+      <option value="4" ${parseInt(t.tipo_operacao,10)===4 ? 'selected' : ''}>Transferência</option>
+    </select>`;
+  const destSel = `
+    <select class="form-control" style="font-size:11px; padding:3px 6px; height:auto; margin-top:4px; ${(podeClassificar && parseInt(t.tipo_operacao,10)===4) ? '' : 'display:none;'}"
+            onchange="setContaDestino(${i}, this.value)" title="Conta de destino/origem">
+      ${contasDestinoOptions(t.conta_destino)}
+    </select>`;
+
   const isIgnored = t.acao === 'ignorar';
+  const sugestaoHint = (t.sugestaoTransferencia && t.classificacao === 'NOVO')
+    ? `<div style="margin-top:4px; font-size:10px; color:#a5b4fc;">Sugestão: possível transferência${t.sugestaoTransferencia.motivo ? ` (${esc(t.sugestaoTransferencia.motivo)})` : ''}</div>`
+    : '';
   return `<tr id="tr-${i}" ${isDup ? 'class="tr-duplicada"' : ''} style="${isDup ? 'display:none;' : ''} ${isIgnored && !isDup ? 'opacity:0.45; filter:grayscale(100%);' : ''} transition: opacity 0.2s, filter 0.2s;">
     <td style="padding:8px 12px;">
       <input type="checkbox" class="row-ck" data-i="${i}"
@@ -599,6 +654,7 @@ function buildRow(t, i, isDup) {
     <td>
       <div style="font-weight:600; font-size:12px;">${esc((t.memo||'—').substring(0,44))}</div>
       <div style="font-size:10px; color:var(--text-muted); font-family:monospace;">${esc(t.fitid)}</div>
+      ${sugestaoHint}
     </td>
     <td class="text-right" style="font-weight:600;">${fmtMSinal(t.valor, t.tipo)}</td>
     <td style="text-align:center;">${tipoSvg}</td>
@@ -607,6 +663,8 @@ function buildRow(t, i, isDup) {
     <td>
       <select class="form-control" style="font-size:11px; padding:3px 6px; height:auto;"
               onchange="setAcao(${i}, this.value)">${opts}</select>
+      ${tipoSel}
+      ${destSel}
       ${t.classificacao !== 'DUPLICIDADE' ? `
       <button
         onclick="abrirVincularModal(${i})"
@@ -626,25 +684,38 @@ function buildRow(t, i, isDup) {
   </tr>`;
 }
 
-function setAcao(i, v) { 
-  ofxTransacoes[i].acao = v; 
+function rebuildRow(i) {
   const tr = document.getElementById(`tr-${i}`);
-  if (tr) {
-    tr.style.opacity = v === 'ignorar' ? '0.45' : '1';
-    tr.style.filter  = v === 'ignorar' ? 'grayscale(100%)' : 'none';
+  if (!tr) return;
+  const t = ofxTransacoes[i];
+  tr.outerHTML = buildRow(t, i, t.classificacao === 'DUPLICIDADE');
+  const newTr = document.getElementById(`tr-${i}`);
+  if (newTr && t.classificacao === 'DUPLICIDADE' && typeof showingDups !== 'undefined' && showingDups) {
+    newTr.style.display = '';
   }
+}
+
+function setAcao(i, v) {
+  ofxTransacoes[i].acao = v;
+  rebuildRow(i);
+}
+
+function setTipoOperacao(i, v) {
+  ofxTransacoes[i].tipo_operacao = parseInt(v, 10);
+  if (ofxTransacoes[i].tipo_operacao !== 4) {
+    ofxTransacoes[i].conta_destino = '';
+  }
+  rebuildRow(i);
+}
+
+function setContaDestino(i, v) {
+  ofxTransacoes[i].conta_destino = v ? parseInt(v, 10) : '';
 }
 
 function ckChange(cb, i) {
   const t = ofxTransacoes[i];
   t.acao = cb.checked ? (t.classificacao === 'NOVO' ? 'inserir' : 'efetivar') : 'ignorar';
-  const sel = document.querySelector(`#tr-${i} select`);
-  if (sel) sel.value = t.acao;
-  const tr = document.getElementById(`tr-${i}`);
-  if (tr) {
-    tr.style.opacity = t.acao === 'ignorar' ? '0.45' : '1';
-    tr.style.filter  = t.acao === 'ignorar' ? 'grayscale(100%)' : 'none';
-  }
+  rebuildRow(i);
 }
 
 function toggleAll(cb) {
@@ -678,6 +749,21 @@ function abrirModal(i) {
   const dv = Math.abs(parseFloat(t.valor) - parseFloat(db.valor||0)) < 0.01;
   const dd = t.data === db.data_lancamento;
 
+  const det = t.scoreDetalhes || {};
+  const regras = Array.isArray(det.regras) ? det.regras : [];
+  const motivos = [];
+  if (det.fitid === 'igual') motivos.push('FITID idêntico');
+  else if (det.fitid === 'vinculado_outro') motivos.push('Lançamento já vinculado a outro FITID');
+  if (det.valor === 'exato') motivos.push('Valor exato');
+  else if (det.valor === 'muito_proximo') motivos.push('Valor muito próximo');
+  else if (det.valor === 'diferente') motivos.push('Valor diferente');
+  if (det.data_dias === 0) motivos.push('Mesma data');
+  else if (typeof det.data_dias === 'number') motivos.push(`Diferença de data: ${det.data_dias} dia(s)`);
+  if (det.tipo === 'compativel') motivos.push('Tipo compatível');
+  else if (det.tipo === 'incompativel') motivos.push('Tipo incompatível');
+  if (typeof det.memo_ratio === 'number' && det.memo_ratio > 0) motivos.push(`Similaridade da descrição: ${Math.round(det.memo_ratio * 100)}%`);
+  const motivosHtml = [...motivos, ...regras].map(m => `<li>${esc(m)}</li>`).join('');
+
   document.getElementById('modalMatchBody').innerHTML = `
     <div class="cg" style="margin-bottom:12px;">
       <div class="cg-h">Campo</div><div class="cg-h">OFX</div><div class="cg-h">Banco</div>
@@ -703,10 +789,11 @@ function abrirModal(i) {
       <div class="cg-v">—</div>
       <div class="cg-v" style="font-family:monospace;font-size:10px;">#${esc(String(db.id||'—'))}</div>
     </div>
-    <div style="display:flex; align-items:center; gap:8px;">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
       ${pill(t.score||0, t.classificacao)}
       <span class="text-muted" style="font-size:11px;">score de similaridade</span>
-    </div>`;
+    </div>
+    ${motivosHtml ? `<div style="font-size:12px; color:var(--text-muted);"><div style="font-weight:600; margin-bottom:4px; color:var(--text-main);">Motivos</div><ul style="margin:0; padding-left:18px; line-height:1.5;">${motivosHtml}</ul></div>` : ''}`;
 
   const acts = document.getElementById('modalMatchActions');
   if (t.classificacao === 'DUPLICIDADE') {
@@ -729,9 +816,8 @@ function abrirModal(i) {
 }
 
 function setAcaoModal(i, acao) {
-  setAcao(i, acao);
-  const sel = document.querySelector(`#tr-${i} select`);
-  if (sel) sel.value = acao;
+  ofxTransacoes[i].acao = acao;
+  rebuildRow(i);
   const cb = document.querySelector(`#tr-${i} .row-ck`);
   if (cb) cb.checked = (acao !== 'ignorar');
   closeModal('modalMatch');
@@ -753,12 +839,16 @@ function buildConfirm() {
     const matchInfo = t.matchDb
       ? `<span style="font-size:10px;font-family:monospace;color:var(--text-muted);">#${t.matchDb.id}</span>`
       : '—';
+    const tipoInfo = (a === 'inserir')
+      ? `<span style="font-size:10px;color:var(--text-muted);">${esc(tipoOperacaoLabel(parseInt(t.tipo_operacao,10) || defaultTipoOperacao(t.tipo)))}</span>`
+      : '—';
 
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:8px 12px; white-space:nowrap; font-size:11px;">${fmtD(t.data)}</td>
       <td style="padding:8px 12px; font-size:11px;">${esc((t.memo||'').substring(0,44))}</td>
       <td style="padding:8px 12px; text-align:right;">${fmtMSinal(t.valor, t.tipo)}</td>
       <td style="padding:8px 12px;">${ACAO_BADGE[a]||''}</td>
+      <td style="padding:8px 12px;">${tipoInfo}</td>
       <td style="padding:8px 12px;">${matchInfo}</td>
     </tr>`;
   }).join('');
@@ -798,6 +888,18 @@ async function executarImportacao() {
       minDate = t.data;
     }
 
+    const tipoOperacao = (t.acao === 'inserir') ? (parseInt(t.tipo_operacao, 10) || defaultTipoOperacao(t.tipo)) : null;
+    if (t.acao === 'inserir' && tipoOperacao === 4) {
+      if (!contaId) {
+        erros++; log.push(`[${t.fitid}] Selecione a conta do extrato para importar como transferência`);
+        continue;
+      }
+      if (!t.conta_destino) {
+        erros++; log.push(`[${t.fitid}] Selecione a conta de destino/origem da transferência`);
+        continue;
+      }
+    }
+
     try {
       const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content
         || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/) || [])[1]
@@ -808,18 +910,20 @@ async function executarImportacao() {
         method: 'POST',
         headers: efetivarHeaders,
         body: JSON.stringify({
-          acao:     t.acao,
-          fitid:    t.fitid,
-          data:     t.data,
-          valor:    t.valor,
-          tipo:     t.tipo,
-          memo:     t.memo,
-          match_id: t.matchDb ? t.matchDb.id : null,
-          conta_id: contaId ? parseInt(contaId) : null,
+          acao:           t.acao,
+          fitid:          t.fitid,
+          data:           t.data,
+          valor:          t.valor,
+          tipo:           t.tipo,
+          memo:           t.memo,
+          match_id:       t.matchDb ? t.matchDb.id : null,
+          conta_id:       contaId ? parseInt(contaId) : null,
+          conta_destino:  (t.acao === 'inserir' && tipoOperacao === 4 && t.conta_destino) ? parseInt(t.conta_destino, 10) : null,
+          tipo_operacao:  tipoOperacao,
           como_efetivado: comoEfetivado,
         }),
       });
-      const data = await r.json();
+      const data = await r.json().catch(() => ({}));
       if (!r.ok) { erros++; log.push(`[${t.fitid}] ${data.detail||'Erro'}`); continue; }
       if (t.acao === 'inserir') ins++; else ef++;
     } catch(e) {
