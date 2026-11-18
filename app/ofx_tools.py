@@ -95,6 +95,7 @@ def analisar_ofx(
         candidatos = _buscar_candidatos(ofx, db, conta_id)
         melhor, score, detalhes = _melhor_match(ofx, candidatos)
         classif = _classificar(score)
+        sugestao_transferencia = _sugerir_transferencia(ofx, db, conta_id, melhor)
 
         resultado.append({
             "fitid":         ofx["fitid"],
@@ -106,6 +107,7 @@ def analisar_ofx(
             "classificacao": classif,
             "scoreDetalhes": detalhes,
             "matchDb":       _serializar(melhor) if melhor else None,
+            "sugestaoTransferencia": sugestao_transferencia,
         })
 
     return {"transacoes": resultado}
@@ -258,6 +260,91 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 # HELPERS INTERNOS
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melhor_match: Optional[Operacao]) -> Optional[dict]:
+    """Sugere classificação como transferência quando há contraparte plausível em outra conta."""
+    # Se já há match forte de duplicidade/concorrência exata na mesma conta, evita sugerir transferência
+    if melhor_match and getattr(melhor_match, "operacoes_fitid", None) == ofx.get("fitid"):
+        return None
+
+    v_ofx = abs(float(ofx.get("valor") or 0))
+    if v_ofx <= 0:
+        return None
+
+    data_ref = ofx["data"]
+    data_min = data_ref - timedelta(days=3)
+    data_max = data_ref + timedelta(days=3)
+
+    # OFX D (saída da conta importada) => provável entrada (+) em outra conta
+    # OFX C (entrada na conta importada) => provável saída (-) em outra conta
+    if ofx["tipo"] == "D":
+        cond_valor = Operacao.operacoes_valor > 0
+    else:
+        cond_valor = Operacao.operacoes_valor < 0
+
+    q = db.query(Operacao).filter(
+        Operacao.operacoes_data_lancamento >= data_min,
+        Operacao.operacoes_data_lancamento <= data_max,
+        Operacao.operacoes_validacao == 1,
+        cond_valor,
+    )
+    if conta_id:
+        q = q.filter(Operacao.operacoes_conta != conta_id)
+
+    candidatos = q.all()
+    melhor = None
+    melhor_score = -1
+    melhor_motivo = ""
+
+    for op in candidatos:
+        v_db = abs(float(op.operacoes_valor or 0))
+        diff_valor = abs(v_db - v_ofx)
+        if diff_valor > 0.05:
+            continue
+        diff_dias = abs((op.operacoes_data_lancamento - data_ref).days) if op.operacoes_data_lancamento else 99
+        score = 0
+        motivo_partes = []
+        if diff_valor < 0.01:
+            score += 60
+            motivo_partes.append("valor igual")
+        else:
+            score += 45
+            motivo_partes.append("valor muito próximo")
+        if diff_dias == 0:
+            score += 30
+            motivo_partes.append("mesma data")
+        elif diff_dias == 1:
+            score += 20
+            motivo_partes.append("1 dia de diferença")
+        elif diff_dias <= 3:
+            score += 10
+            motivo_partes.append(f"{diff_dias} dias de diferença")
+        # bônus se já for transferência ou descrição semelhante
+        if int(op.operacoes_tipo or 0) == 4:
+            score += 10
+            motivo_partes.append("contraparte já é transferência")
+        ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+        if ratio >= 0.7:
+            score += 10
+            motivo_partes.append("descrição semelhante")
+
+        if score > melhor_score:
+            melhor_score = score
+            melhor = op
+            melhor_motivo = ", ".join(motivo_partes)
+
+    # limiar para sugerir
+    if not melhor or melhor_score < 70:
+        return None
+
+    conta_contraparte = melhor.operacoes_conta
+    return {
+        "conta_destino": conta_contraparte,
+        "operacao_contraparte_id": melhor.operacoes_id,
+        "motivo": melhor_motivo or "contraparte compatível encontrada em outra conta",
+        "score": melhor_score,
+    }
 
 TRNTYPE_MAP = {
     "DEBIT": "D", "CREDIT": "C", "INT": "C", "DIV": "C",

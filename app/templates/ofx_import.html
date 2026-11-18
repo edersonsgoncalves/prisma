@@ -579,9 +579,19 @@ function buildRevisao() {
     let isDup = false;
     if (t.tipo_operacao == null) t.tipo_operacao = defaultTipoOperacao(t.tipo);
     if (t.conta_destino == null) t.conta_destino = '';
+    if (t._sugestaoAplicada == null) t._sugestaoAplicada = false;
+
     if (t.classificacao === 'DUPLICIDADE')                               { dup++;   t.acao = 'ignorar'; isDup = true; }
     else if (['MATCH_FORTE','MATCH_FRACO'].includes(t.classificacao))    { match++;  t.acao = 'efetivar'; }
     else                                                                  { novo++;   t.acao = 'inserir'; }
+
+    // Sugestão automática de transferência para novos lançamentos
+    if (t.classificacao === 'NOVO' && t.sugestaoTransferencia && !t._sugestaoAplicada) {
+      t.tipo_operacao = 4;
+      if (t.sugestaoTransferencia.conta_destino) t.conta_destino = t.sugestaoTransferencia.conta_destino;
+      t._sugestaoAplicada = true;
+    }
+
     return buildRow(t, i, isDup);
   }).join('');
 
@@ -632,6 +642,9 @@ function buildRow(t, i, isDup) {
     </select>`;
 
   const isIgnored = t.acao === 'ignorar';
+  const sugestaoHint = (t.sugestaoTransferencia && t.classificacao === 'NOVO')
+    ? `<div style="margin-top:4px; font-size:10px; color:#a5b4fc;">Sugestão: possível transferência${t.sugestaoTransferencia.motivo ? ` (${esc(t.sugestaoTransferencia.motivo)})` : ''}</div>`
+    : '';
   return `<tr id="tr-${i}" ${isDup ? 'class="tr-duplicada"' : ''} style="${isDup ? 'display:none;' : ''} ${isIgnored && !isDup ? 'opacity:0.45; filter:grayscale(100%);' : ''} transition: opacity 0.2s, filter 0.2s;">
     <td style="padding:8px 12px;">
       <input type="checkbox" class="row-ck" data-i="${i}"
@@ -641,6 +654,7 @@ function buildRow(t, i, isDup) {
     <td>
       <div style="font-weight:600; font-size:12px;">${esc((t.memo||'—').substring(0,44))}</div>
       <div style="font-size:10px; color:var(--text-muted); font-family:monospace;">${esc(t.fitid)}</div>
+      ${sugestaoHint}
     </td>
     <td class="text-right" style="font-weight:600;">${fmtMSinal(t.valor, t.tipo)}</td>
     <td style="text-align:center;">${tipoSvg}</td>
