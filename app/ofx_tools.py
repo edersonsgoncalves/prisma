@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Optional
+import uuid
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -63,10 +64,12 @@ class EfetivarPayload(BaseModel):
     fitid: str
     data: str               # ISO: YYYY-MM-DD
     valor: float
-    tipo: str               # "C" crédito | "D" débito
+    tipo: str               # "C" crédito | "D" débito (tipo do OFX)
     memo: Optional[str] = None
     match_id: Optional[int] = None   # operacoes_id do lançamento existente
-    conta_id: Optional[int] = None   # conta_id de contas_bancarias
+    conta_id: Optional[int] = None   # conta_id de contas_bancarias (conta do extrato)
+    conta_destino: Optional[int] = None  # contraparte para transferência
+    tipo_operacao: Optional[int] = None  # 1=Receita, 3=Despesa, 4=Transferência (para inserir)
     como_efetivado: bool = True      # status de conciliação
 
 
@@ -125,8 +128,8 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
         return {"status": "ignorado"}
 
     data_lancamento = date.fromisoformat(payload.data)
-    # C=Receita(1) / D=Despesa(3)
-    tipo_int = 1 if payload.tipo == "C" else 3
+    # Tipo de operação para inserção: 1=Receita, 3=Despesa, 4=Transferência
+    tipo_int = payload.tipo_operacao or (1 if payload.tipo == "C" else 3)
 
     # ── EFETIVAR / FORÇAR ─────────────────────────────────────────────────
     if payload.acao in ("efetivar", "forcar"):
@@ -141,8 +144,12 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             raise ValueError(f"Operação {payload.match_id} não encontrada.")
 
         # Sobrescrever data e valor sempre com os dados do OFX:
-        op.operacoes_data_lancamento = data_lancamento
-        op.operacoes_valor = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
+        # para transferências preserva o sinal do lançamento conciliado (lado do par)
+        if op.operacoes_tipo == 4:
+            sinal = -1 if float(op.operacoes_valor or 0) < 0 else 1
+            op.operacoes_valor = abs(payload.valor) * sinal
+        else:
+            op.operacoes_valor = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
 
         # Concatenar a descrição do OFX (até 20 caracteres)
         memo_str = (payload.memo or "").strip()[:20]
@@ -150,12 +157,12 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             nova_desc = f"{op.operacoes_descricao or ''} ({memo_str})".strip()
             op.operacoes_descricao = nova_desc[:255]
 
-        op.operacoes_efetivado        = 1 if payload.como_efetivado else 0
+        op.operacoes_efetivado = 1 if payload.como_efetivado else 0
         if payload.como_efetivado:
             op.operacoes_data_efetivado = datetime.combine(data_lancamento, datetime.min.time())
         else:
             op.operacoes_data_efetivado = None
-        op.operacoes_fitid            = payload.fitid   # requer migration (ver docstring)
+        op.operacoes_fitid = payload.fitid   # requer migration (ver docstring)
         db.commit()
         return {"status": "efetivado", "id": op.operacoes_id}
 
@@ -172,17 +179,73 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
             if not conta:
                 raise ValueError("Nenhuma conta cadastrada no sistema.")
 
-        valor_op = -abs(payload.valor) if payload.tipo == "D" else abs(payload.valor)
+        descricao = (payload.memo or "Importado via OFX").strip() or "Importado via OFX"
+        dt_efet = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None
+
+        # Transferência: cria par de operações vinculadas
+        if tipo_int == 4:
+            if not payload.conta_destino:
+                raise ValueError("Selecione a conta de destino para inserir como transferência.")
+            if int(payload.conta_destino) == int(conta.conta_id):
+                raise ValueError("Conta de destino deve ser diferente da conta de origem.")
+
+            conta_destino = db.query(ContaBancaria).filter(
+                ContaBancaria.conta_id == payload.conta_destino
+            ).first()
+            if not conta_destino:
+                raise ValueError("Conta de destino não encontrada.")
+
+            grupo_id = f"TRF-OFX-{uuid.uuid4().hex[:8]}"
+            # OFX D: saída da conta do extrato -> destino; OFX C: entrada na conta do extrato <- origem
+            if payload.tipo == "D":
+                conta_saida_id = conta.conta_id
+                conta_entrada_id = conta_destino.conta_id
+            else:
+                conta_saida_id = conta_destino.conta_id
+                conta_entrada_id = conta.conta_id
+
+            op_saida = Operacao(
+                operacoes_data_lancamento=data_lancamento,
+                operacoes_descricao=descricao,
+                operacoes_conta=conta_saida_id,
+                operacoes_valor=-abs(payload.valor),
+                operacoes_tipo=4,
+                operacoes_efetivado=1 if payload.como_efetivado else 0,
+                operacoes_data_efetivado=dt_efet,
+                operacoes_fitid=payload.fitid,
+                operacoes_validacao=1,
+                operacoes_grupo_id=grupo_id,
+            )
+            op_entrada = Operacao(
+                operacoes_data_lancamento=data_lancamento,
+                operacoes_descricao=descricao,
+                operacoes_conta=conta_entrada_id,
+                operacoes_valor=abs(payload.valor),
+                operacoes_tipo=4,
+                operacoes_efetivado=1 if payload.como_efetivado else 0,
+                operacoes_data_efetivado=dt_efet,
+                operacoes_validacao=1,
+                operacoes_grupo_id=grupo_id,
+            )
+            db.add(op_saida)
+            db.add(op_entrada)
+            db.flush()
+            op_saida.operacoes_transf_rel = op_entrada.operacoes_id
+            op_entrada.operacoes_transf_rel = op_saida.operacoes_id
+            db.commit()
+            return {"status": "inserido", "id": op_saida.operacoes_id, "id_rel": op_entrada.operacoes_id}
+
+        valor_op = -abs(payload.valor) if tipo_int == 3 else abs(payload.valor)
         nova = Operacao(
-            operacoes_data_lancamento = data_lancamento,
-            operacoes_descricao       = payload.memo or "Importado via OFX",
-            operacoes_conta           = conta.conta_id,
-            operacoes_valor           = valor_op,
-            operacoes_tipo            = tipo_int,
-            operacoes_efetivado       = 1 if payload.como_efetivado else 0,
-            operacoes_data_efetivado  = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None,
-            operacoes_fitid           = payload.fitid,
-            operacoes_validacao       = 1,
+            operacoes_data_lancamento=data_lancamento,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta.conta_id,
+            operacoes_valor=valor_op,
+            operacoes_tipo=tipo_int,
+            operacoes_efetivado=1 if payload.como_efetivado else 0,
+            operacoes_data_efetivado=dt_efet,
+            operacoes_fitid=payload.fitid,
+            operacoes_validacao=1,
         )
         db.add(nova)
         db.commit()
