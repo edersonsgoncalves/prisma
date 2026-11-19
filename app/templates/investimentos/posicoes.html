@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Posições - Investimentos{% endblock %}
+{% block page_title %}Posições{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Posições</h1>
+    <p>Posição consolidada por carteira/ativo (quantidade, preço médio e custo).</p>
+  </div>
+  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>Carteira</th><th>Ativo</th><th>Quantidade</th><th>Preço médio</th><th>Custo total (orig.)</th><th>Custo total (BRL)</th></tr></thead>
+      <tbody>
+      {% for p in itens %}
+        <tr>
+          <td>{{ p.carteira.nome if p.carteira else p.carteira_id }}</td>
+          <td>{{ p.ativo.nome if p.ativo else p.ativo_id }}</td>
+          <td>{{ p.quantidade }}</td>
+          <td>{{ p.preco_medio }}</td>
+          <td>{{ p.custo_total }}</td>
+          <td>{{ p.custo_total_brl }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-muted text-center">Nenhuma posição registrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

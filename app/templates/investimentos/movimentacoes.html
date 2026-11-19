@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Movimentações - Investimentos{% endblock %}
+{% block page_title %}Movimentações{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Movimentações</h1>
+    <p>Registro de operações (compra/venda/aplicação/resgate) com atualização de posição e lotes (base).</p>
+  </div>
+  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Nova movimentação</h3>
+  <form method="post" action="/investimentos/movimentacoes">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Carteira *</label>
+        <select class="form-control" name="carteira_id" required>
+          <option value="">Selecione...</option>
+          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo *</label>
+        <select class="form-control" name="tipo" required>
+          <option value="COMPRA">Compra (RV/Fundos)</option>
+          <option value="VENDA">Venda (RV/Fundos)</option>
+          <option value="APLICACAO">Aplicação (RF/Caixinha)</option>
+          <option value="RESGATE_ATIVO">Resgate/Vencimento (RF/Caixinha)</option>
+          <option value="APORTE">Aporte em caixa (carteira)</option>
+          <option value="RESGATE">Resgate em caixa (carteira)</option>
+          <option value="AJUSTE">Ajuste</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ativo/Produto</label>
+        <select class="form-control" name="ativo_id">
+          <option value="">(nenhum / caixa)</option>
+          {% for a in ativos %}<option value="{{ a.id }}">{{ a.nome }}{% if a.ticker %} ({{ a.ticker }}){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Data negociação *</label><input class="form-control" type="date" name="data_negociacao" required></div>
+      <div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" name="quantidade" placeholder="0,00"></div>
+      <div class="form-group"><label class="form-label">Preço unitário (moeda original)</label><input class="form-control" name="preco_unitario" placeholder="0,00"></div>
+      <div class="form-group"><label class="form-label">Valor bruto (moeda original)</label><input class="form-control" name="valor_bruto" placeholder="0,00"></div>
+      <div class="form-group"><label class="form-label">Taxas/custos</label><input class="form-control" name="taxas_custos" placeholder="0,00"></div>
+      <div class="form-group">
+        <label class="form-label">Moeda (operação/ativo)</label>
+        <select class="form-control" name="moeda_id">
+          <option value="">(padrão)</option>
+          {% for m in moedas %}<option value="{{ m.idcontas_moedas }}">{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Taxa de câmbio (→ BRL)</label><input class="form-control" name="taxa_cambio" placeholder="ex: 5,4321 (se aplicável)"></div>
+      <div class="form-group">
+        <label class="form-label">Corretora</label>
+        <select class="form-control" name="corretora_id">
+          <option value="">(nenhuma)</option>
+          {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">Registrar movimentação</button>
+  </form>
+  <p class="text-muted" style="font-size:12px; margin-top:8px;">Base: compra/aplicação cria lote e atualiza preço médio; venda/resgate baixa posição (FIFO simplificado). Integração automática com transferências financeiras será concretizada em etapa seguinte.</p>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>Data</th><th>Carteira</th><th>Tipo</th><th>Ativo</th><th>Qtd</th><th>Preço un.</th><th>Valor líq.</th><th>Moeda</th><th>Câmbio</th><th>BRL</th></tr></thead>
+      <tbody>
+      {% for it in itens %}
+        <tr>
+          <td>{{ it.data_negociacao }}</td>
+          <td>{{ it.carteira.nome if it.carteira else it.carteira_id }}</td>
+          <td>{{ it.tipo }}</td>
+          <td>{{ it.ativo.nome if it.ativo else '-' }}</td>
+          <td>{{ it.quantidade or '-' }}</td>
+          <td>{{ it.preco_unitario or '-' }}</td>
+          <td>{{ it.valor_liquido }}</td>
+          <td>{{ it.moeda_id or '-' }}</td>
+          <td>{{ it.taxa_cambio or '-' }}</td>
+          <td>{{ it.valor_brl or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="text-muted text-center">Nenhuma movimentação registrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -19,6 +19,8 @@ from .models import (
     InvestCarteira,
     InvestIndexador,
     InvestInstituicao,
+    InvestMovimentacao,
+    InvestPosicao,
     InvestTaxaCambio,
 )
 from . import service
@@ -226,3 +228,71 @@ async def cambio_manual(
 
     service.registrar_taxa_cambio(db, moeda_origem_id, moeda_destino_id, dt, valor, tipo="MANUAL", fonte="MANUAL")
     return RedirectResponse(url="/investimentos/cambio?msg=Taxa+manual+registrada", status_code=303)
+
+
+# ── Movimentações e posições (base Fase 2) ──────────────────────────────────
+
+@router.get("/movimentacoes", response_class=HTMLResponse)
+async def listar_movimentacoes(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+    itens = db.query(InvestMovimentacao).order_by(InvestMovimentacao.data_negociacao.desc(), InvestMovimentacao.id.desc()).limit(200).all()
+    carteiras = db.query(InvestCarteira).filter(InvestCarteira.ativo == 1).order_by(InvestCarteira.nome).all()
+    ativos = db.query(InvestAtivo).filter(InvestAtivo.ativo == 1).order_by(InvestAtivo.nome).all()
+    instituicoes = db.query(InvestInstituicao).filter(InvestInstituicao.ativo == 1).order_by(InvestInstituicao.nome).all()
+    moedas = service.listar_moedas(db)
+    return templates.TemplateResponse("investimentos/movimentacoes.html", {
+        "request": request, "sessao": sessao, "itens": itens,
+        "carteiras": carteiras, "ativos": ativos, "instituicoes": instituicoes, "moedas": moedas,
+    })
+
+
+@router.post("/movimentacoes")
+async def criar_movimentacao(
+    request: Request,
+    carteira_id: int = Form(...),
+    tipo: str = Form(...),
+    data_negociacao: str = Form(...),
+    ativo_id: Optional[int] = Form(None),
+    quantidade: Optional[str] = Form(None),
+    preco_unitario: Optional[str] = Form(None),
+    valor_bruto: Optional[str] = Form(None),
+    taxas_custos: Optional[str] = Form(None),
+    moeda_id: Optional[int] = Form(None),
+    taxa_cambio: Optional[str] = Form(None),
+    corretora_id: Optional[int] = Form(None),
+    observacoes: Optional[str] = Form(None),
+    sessao=Depends(require_login),
+    db: Session = Depends(get_db),
+):
+    dt = date.fromisoformat(data_negociacao)
+    qtd = _parse_decimal_br(quantidade, "0") if quantidade else None
+    pu = _parse_decimal_br(preco_unitario, "0") if preco_unitario else None
+    bruto = _parse_decimal_br(valor_bruto, "0") if valor_bruto else None
+    custos = _parse_decimal_br(taxas_custos, "0") if taxas_custos else None
+    cambio = _parse_decimal_br(taxa_cambio, "0") if taxa_cambio else None
+    if cambio is not None and cambio == 0:
+        cambio = None
+
+    service.registrar_movimentacao(
+        db=db,
+        carteira_id=carteira_id,
+        tipo=tipo,
+        data_negociacao=dt,
+        ativo_id=ativo_id or None,
+        quantidade=qtd,
+        preco_unitario=pu,
+        valor_bruto=bruto,
+        taxas_custos=custos,
+        moeda_id=moeda_id or None,
+        taxa_cambio=cambio,
+        corretora_id=corretora_id or None,
+        observacoes=(observacoes or None),
+    )
+    return RedirectResponse(url="/investimentos/movimentacoes", status_code=303)
+
+
+@router.get("/posicoes", response_class=HTMLResponse)
+async def listar_posicoes(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+    itens = db.query(InvestPosicao).all()
+    # ordena em python por carteira/ativo para simplicidade
+    itens = sorted(itens, key=lambda p: (p.carteira_id, p.ativo_id))
+    return templates.TemplateResponse("investimentos/posicoes.html", {"request": request, "sessao": sessao, "itens": itens})
