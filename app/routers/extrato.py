@@ -11,7 +11,7 @@ from sqlalchemy import func, and_, or_, extract, case
 
 from app.database import get_db
 from app.auth import require_login
-from app.models import Operacao, ContaBancaria, Categoria
+from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao
 
 router = APIRouter(prefix="/extrato", tags=["extrato"])
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,7 +40,9 @@ async def extrato_unificado(
     # Query base
     query = db.query(Operacao).options(
         joinedload(Operacao.conta),
-        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta)
+        joinedload(Operacao.fatura).joinedload(FaturaCartao.cartao),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.fatura).joinedload(FaturaCartao.cartao),
     )
     
     # Filtros de data e status "especial" para o mês atual
@@ -99,7 +101,7 @@ async def extrato_unificado(
     hoje = date.today()
     is_atrasado = case(
         (and_(
-            func.coalesce(Operacao.operacoes_efetivado, 0) != 1, 
+            func.coalesce(Operacao.operacoes_efetivado, 0) != 1,
             Operacao.operacoes_data_lancamento < hoje
         ), 1),
         else_=0
@@ -174,10 +176,11 @@ async def extrato_por_conta(
     hoje = date.today()
     is_hoje_periodo = (m == hoje.month and y == hoje.year)
 
-    from sqlalchemy import and_, or_
     query = db.query(Operacao).options(
         joinedload(Operacao.conta),
-        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta)
+        joinedload(Operacao.fatura).joinedload(FaturaCartao.cartao),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.conta),
+        joinedload(Operacao.transf_rel_obj).joinedload(Operacao.fatura).joinedload(FaturaCartao.cartao),
     ).filter(
         Operacao.operacoes_conta == conta_id,
         Operacao.operacoes_validacao == 1,

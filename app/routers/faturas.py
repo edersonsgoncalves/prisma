@@ -416,27 +416,27 @@ async def pagar_fatura(
     # A conta_destino da operação é o ID da conta do cartão (fatura.conta_id)
     conta_cartao_id = fatura.conta_id
 
-    # Criamos a transferência (Pagamento da Fatura)
+    # Criamos o pagamento de fatura (par 0/0 para uniformizar com o fechamento automático)
     # 1. Saída da conta bancária
     op_saida = Operacao(
         operacoes_data_lancamento=dt_operacao,
         operacoes_descricao=descricao,
         operacoes_conta=conta_origem,
         operacoes_valor=-valor_float,
-        operacoes_tipo=4, # Transferência
+        operacoes_tipo=0,  # Pagamento de Fatura
         operacoes_efetivado=1,
         operacoes_data_efetivado=datetime.now(),
         operacoes_validacao=1
     )
-    
-    # 2. Entrada no cartão (reduz saldo devedor)
+
+    # 2. Entrada no cartão (reduz saldo devedor / quita fatura)
     op_entrada = Operacao(
         operacoes_data_lancamento=dt_operacao,
         operacoes_descricao=descricao,
         operacoes_conta=conta_cartao_id,
         operacoes_valor=valor_float,
-        operacoes_fatura=fatura.fatura_id, # Vincula à fatura
-        operacoes_tipo=0, # Pagamento de Fatura (TipoEspecial)
+        operacoes_fatura=fatura.fatura_id,  # Vincula à fatura paga
+        operacoes_tipo=0,  # Pagamento de Fatura
         operacoes_efetivado=1,
         operacoes_data_efetivado=datetime.now(),
         operacoes_validacao=1
