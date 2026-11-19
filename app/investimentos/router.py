@@ -40,6 +40,18 @@ def _parse_decimal_br(value: Optional[str], default: str = "0") -> Decimal:
         return Decimal(default)
 
 
+def _parse_optional_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    s = str(value).strip()
+    if s == "":
+        return None
+    try:
+        return int(s)
+    except Exception:
+        return None
+
+
 @router.get("", response_class=HTMLResponse)
 async def investimentos_home(
     request: Request,
@@ -111,9 +123,9 @@ async def listar_carteiras(request: Request, msg: Optional[str] = Query(None), e
 async def criar_carteira(
     request: Request,
     nome: str = Form(...),
-    instituicao_id: Optional[int] = Form(None),
-    conta_financeira_id: Optional[int] = Form(None),
-    moeda_base_id: Optional[int] = Form(None),
+    instituicao_id: Optional[str] = Form(None),
+    conta_financeira_id: Optional[str] = Form(None),
+    moeda_base_id: Optional[str] = Form(None),
     descricao: Optional[str] = Form(None),
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
@@ -123,9 +135,9 @@ async def criar_carteira(
             raise ValueError("Informe o nome da carteira.")
         db.add(InvestCarteira(
             nome=nome.strip(),
-            instituicao_id=instituicao_id or None,
-            conta_financeira_id=conta_financeira_id or None,
-            moeda_base_id=moeda_base_id or None,
+            instituicao_id=_parse_optional_int(instituicao_id),
+            conta_financeira_id=_parse_optional_int(conta_financeira_id),
+            moeda_base_id=_parse_optional_int(moeda_base_id),
             descricao=(descricao or None),
             ativo=1,
         ))
@@ -162,12 +174,12 @@ async def criar_ativo(
     ticker: Optional[str] = Form(None),
     isin: Optional[str] = Form(None),
     emissor: Optional[str] = Form(None),
-    instituicao_id: Optional[int] = Form(None),
-    moeda_id: Optional[int] = Form(None),
-    indexador_id: Optional[int] = Form(None),
+    instituicao_id: Optional[str] = Form(None),
+    moeda_id: Optional[str] = Form(None),
+    indexador_id: Optional[str] = Form(None),
     taxa_contratada: Optional[str] = Form(None),
     data_vencimento: Optional[str] = Form(None),
-    liquidez_diaria: Optional[int] = Form(0),
+    liquidez_diaria: Optional[str] = Form("0"),
     observacoes: Optional[str] = Form(None),
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
@@ -184,12 +196,12 @@ async def criar_ativo(
             ticker=(ticker.strip() if ticker else None),
             isin=(isin.strip() if isin else None),
             emissor=(emissor or None),
-            instituicao_id=instituicao_id or None,
-            moeda_id=moeda_id or None,
-            indexador_id=indexador_id or None,
+            instituicao_id=_parse_optional_int(instituicao_id),
+            moeda_id=_parse_optional_int(moeda_id),
+            indexador_id=_parse_optional_int(indexador_id),
             taxa_contratada=taxa,
             data_vencimento=dv,
-            liquidez_diaria=1 if liquidez_diaria else 0,
+            liquidez_diaria=1 if str(liquidez_diaria) == "1" else 0,
             observacoes=(observacoes or None),
             ativo=1,
         ))
@@ -284,18 +296,18 @@ async def criar_movimentacao(
     carteira_id: int = Form(...),
     tipo: str = Form(...),
     data_negociacao: str = Form(...),
-    ativo_id: Optional[int] = Form(None),
+    ativo_id: Optional[str] = Form(None),
     quantidade: Optional[str] = Form(None),
     preco_unitario: Optional[str] = Form(None),
     valor_bruto: Optional[str] = Form(None),
     taxas_custos: Optional[str] = Form(None),
-    moeda_id: Optional[int] = Form(None),
+    moeda_id: Optional[str] = Form(None),
     taxa_cambio: Optional[str] = Form(None),
-    corretora_id: Optional[int] = Form(None),
+    corretora_id: Optional[str] = Form(None),
     observacoes: Optional[str] = Form(None),
     integrar_financeiro: Optional[str] = Form(None),
-    conta_externa_id: Optional[int] = Form(None),
-    efetivado: Optional[int] = Form(1),
+    conta_externa_id: Optional[str] = Form(None),
+    efetivado: Optional[str] = Form("1"),
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
 ):
@@ -314,18 +326,18 @@ async def criar_movimentacao(
             carteira_id=carteira_id,
             tipo=tipo,
             data_negociacao=dt,
-            ativo_id=ativo_id or None,
+            ativo_id=_parse_optional_int(ativo_id),
             quantidade=qtd,
             preco_unitario=pu,
             valor_bruto=bruto,
             taxas_custos=custos,
-            moeda_id=moeda_id or None,
+            moeda_id=_parse_optional_int(moeda_id),
             taxa_cambio=cambio,
-            corretora_id=corretora_id or None,
+            corretora_id=_parse_optional_int(corretora_id),
             observacoes=(observacoes or None),
             integrar_financeiro=bool(integrar_financeiro),
-            conta_externa_id=conta_externa_id or None,
-            efetivado=1 if efetivado is None else int(efetivado),
+            conta_externa_id=_parse_optional_int(conta_externa_id),
+            efetivado=1 if str(efetivado) != "0" else 0,
         )
     except Exception as e:
         db.rollback()
@@ -335,7 +347,6 @@ async def criar_movimentacao(
     if integracao and integracao.get("ok"):
         msg += " e integrada ao financeiro (transferência criada)" if not integracao.get("reutilizado") else " (integração financeira já existente)"
     elif integracao and not integracao.get("ok"):
-        # não deveria ocorrer (serviço levanta erro), mas por segurança
         pass
     return RedirectResponse(url=f"/investimentos/movimentacoes?msg={quote(msg)}", status_code=303)
 
