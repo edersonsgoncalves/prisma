@@ -3,32 +3,56 @@
 {% block page_title %}Instituições / Corretoras{% endblock %}
 
 {% block content %}
-<div class="page-header flex justify-between items-end">
+<div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
   <div>
     <h1>Instituições / Corretoras</h1>
-    <p>Cadastre custodiante, corretora ou banco emissor.</p>
+    <p>Cadastre corretoras, bancos, custodiante ou emissores para vincular a carteiras e ativos.</p>
   </div>
-  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-secondary" href="/investimentos/carteiras">Carteiras</a>
+    <a class="btn btn-secondary" href="/investimentos/ativos">Ativos</a>
+    <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  </div>
 </div>
+
+{% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+{% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
 
 <div class="card" style="margin-bottom:16px;">
   <h3 style="margin-top:0;">Nova instituição</h3>
   <form method="post" action="/investimentos/instituicoes">
     <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
     <div class="form-grid-2">
-      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" name="nome" required></div>
-      <div class="form-group"><label class="form-label">Tipo</label><input class="form-control" name="tipo" placeholder="Corretora, Banco, Custodiante"></div>
-      <div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" name="cnpj"></div>
-      <div class="form-group"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input class="form-control" name="nome" required placeholder="Ex.: XP, Nubank, BTG, Tesouro Direto">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-control" name="tipo">
+          <option value="">(não informado)</option>
+          <option value="Corretora">Corretora</option>
+          <option value="Banco">Banco</option>
+          <option value="Custodiante">Custodiante</option>
+          <option value="Emissor">Emissor</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" name="cnpj" placeholder="Opcional"></div>
+      <div class="form-group"><label class="form-label">Observações</label><input class="form-control" name="observacoes" placeholder="Opcional"></div>
     </div>
-    <button class="btn btn-primary" type="submit">Salvar</button>
+    <button class="btn btn-primary" type="submit">Salvar instituição</button>
   </form>
 </div>
 
 <div class="card p-0 overflow-hidden">
+  <div class="flex justify-between items-center" style="padding:12px 16px; border-bottom:1px solid var(--border, #334155);">
+    <strong>Instituições cadastradas</strong>
+    <span class="text-muted" style="font-size:12px;">{{ itens|length }} registro(s)</span>
+  </div>
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>CNPJ</th><th>Status</th></tr></thead>
+      <thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>CNPJ</th><th>Status</th><th>Observações</th></tr></thead>
       <tbody>
       {% for it in itens %}
         <tr>
@@ -36,10 +60,11 @@
           <td class="font-bold">{{ it.nome }}</td>
           <td>{{ it.tipo or '-' }}</td>
           <td>{{ it.cnpj or '-' }}</td>
-          <td>{{ 'Ativa' if it.ativo else 'Inativa' }}</td>
+          <td>{% if it.ativo %}<span class="badge" style="background:rgba(74,222,128,.15);color:#4ade80;padding:2px 8px;border-radius:999px;font-size:12px;">Ativa</span>{% else %}<span class="badge" style="background:rgba(148,163,184,.15);color:#94a3b8;padding:2px 8px;border-radius:999px;font-size:12px;">Inativa</span>{% endif %}</td>
+          <td class="text-muted">{{ it.observacoes or '-' }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="text-muted text-center">Nenhuma instituição cadastrada.</td></tr>
+        <tr><td colspan="6" class="text-muted text-center" style="padding:24px;">Nenhuma instituição cadastrada. Cadastre a corretora/banco para usar em carteiras e ativos.</td></tr>
       {% endfor %}
       </tbody>
     </table>

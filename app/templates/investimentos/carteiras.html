@@ -3,20 +3,30 @@
 {% block page_title %}Carteiras de Investimento{% endblock %}
 
 {% block content %}
-<div class="page-header flex justify-between items-end">
+<div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
   <div>
     <h1>Carteiras</h1>
-    <p>Carteiras/custódias, com vínculo opcional à conta financeira (tipo investimento).</p>
+    <p>Carteiras/custódias de investimento. Vincule uma conta financeira para integrar aportes e resgates.</p>
   </div>
-  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-secondary" href="/investimentos/instituicoes">Instituições</a>
+    <a class="btn btn-secondary" href="/investimentos/ativos">Ativos</a>
+    <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  </div>
 </div>
+
+{% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+{% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
 
 <div class="card" style="margin-bottom:16px;">
   <h3 style="margin-top:0;">Nova carteira</h3>
   <form method="post" action="/investimentos/carteiras">
     <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
     <div class="form-grid-2">
-      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" name="nome" required></div>
+      <div class="form-group">
+        <label class="form-label">Nome *</label>
+        <input class="form-control" name="nome" required placeholder="Ex.: Carteira XP, Reserva, Exterior">
+      </div>
       <div class="form-group">
         <label class="form-label">Instituição/Corretora</label>
         <select class="form-control" name="instituicao_id">
@@ -25,11 +35,12 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Conta financeira vinculada</label>
+        <label class="form-label">Conta financeira vinculada <span class="text-muted" style="font-weight:400;">(para aportes/resgates)</span></label>
         <select class="form-control" name="conta_financeira_id">
           <option value="">(sem vínculo)</option>
           {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
         </select>
+        <small class="text-muted">Necessária para integração automática de transferências em APORTE/RESGATE.</small>
       </div>
       <div class="form-group">
         <label class="form-label">Moeda base</label>
@@ -38,27 +49,32 @@
           {% for m in moedas %}<option value="{{ m.idcontas_moedas }}">{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
         </select>
       </div>
-      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Descrição</label><input class="form-control" name="descricao"></div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Descrição</label><input class="form-control" name="descricao" placeholder="Opcional"></div>
     </div>
-    <button class="btn btn-primary" type="submit">Salvar</button>
+    <button class="btn btn-primary" type="submit">Salvar carteira</button>
   </form>
 </div>
 
 <div class="card p-0 overflow-hidden">
+  <div class="flex justify-between items-center" style="padding:12px 16px; border-bottom:1px solid var(--border, #334155);">
+    <strong>Carteiras cadastradas</strong>
+    <span class="text-muted" style="font-size:12px;">{{ itens|length }} registro(s)</span>
+  </div>
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>ID</th><th>Nome</th><th>Instituição</th><th>Conta financeira (ref)</th><th>Moeda base (ref)</th></tr></thead>
+      <thead><tr><th>ID</th><th>Nome</th><th>Instituição</th><th>Conta financeira vinculada</th><th>Moeda base</th><th>Integração</th></tr></thead>
       <tbody>
       {% for it in itens %}
         <tr>
           <td>#{{ it.id }}</td>
-          <td class="font-bold">{{ it.nome }}</td>
+          <td class="font-bold">{{ it.nome }}{% if it.descricao %}<div class="text-muted" style="font-size:12px; font-weight:400;">{{ it.descricao }}</div>{% endif %}</td>
           <td>{{ it.instituicao.nome if it.instituicao else '-' }}</td>
-          <td>{{ it.conta_financeira_id or '-' }}</td>
-          <td>{{ it.moeda_base_id or '-' }}</td>
+          <td>{% if it.conta_financeira_id %}{{ contas_map.get(it.conta_financeira_id, '#' ~ it.conta_financeira_id) }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
+          <td>{% if it.moeda_base_id %}{{ moedas_map.get(it.moeda_base_id, '#' ~ it.moeda_base_id) }}{% else %}<span class="text-muted">padrão</span>{% endif %}</td>
+          <td>{% if it.conta_financeira_id %}<span style="color:#4ade80; font-size:12px;">Pronta p/ aportes/resgates</span>{% else %}<span class="text-muted" style="font-size:12px;">Sem vínculo</span>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="5" class="text-muted text-center">Nenhuma carteira cadastrada.</td></tr>
+        <tr><td colspan="6" class="text-muted text-center" style="padding:24px;">Nenhuma carteira cadastrada. Crie uma carteira e, se desejar integrar aportes/resgates, vincule uma conta financeira.</td></tr>
       {% endfor %}
       </tbody>
     </table>

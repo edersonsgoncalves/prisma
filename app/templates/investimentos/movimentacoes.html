@@ -96,12 +96,12 @@
 <div class="card p-0 overflow-hidden">
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>Data</th><th>Carteira</th><th>Tipo</th><th>Ativo</th><th>Qtd</th><th>Preço un.</th><th>Valor líq.</th><th>Moeda</th><th>Câmbio</th><th>BRL</th></tr></thead>
+      <thead><tr><th>Data</th><th>Carteira</th><th>Tipo</th><th>Ativo</th><th>Qtd</th><th>Preço un.</th><th>Valor líq.</th><th>Moeda</th><th>Câmbio</th><th>BRL</th><th>Financeiro</th></tr></thead>
       <tbody>
       {% for it in itens %}
         <tr>
           <td>{{ it.data_negociacao }}</td>
-          <td>{{ it.carteira.nome if it.carteira else it.carteira_id }}</td>
+          <td>{{ it.carteira.nome if it.carteira else ('#' ~ it.carteira_id) }}</td>
           <td>{{ it.tipo }}</td>
           <td>{{ it.ativo.nome if it.ativo else '-' }}</td>
           <td>{{ it.quantidade or '-' }}</td>
@@ -110,9 +110,18 @@
           <td>{{ it.moeda_id or '-' }}</td>
           <td>{{ it.taxa_cambio or '-' }}</td>
           <td>{{ it.valor_brl or '-' }}</td>
+          <td>
+            {% if it.operacao_financeira_id %}
+              <span title="Operação #{{ it.operacao_financeira_id }}{% if it.id_correlacao %} | {{ it.id_correlacao }}{% endif %}" style="color:#4ade80; font-size:12px;">Integrado #{{ it.operacao_financeira_id }}</span>
+            {% elif it.tipo in ['APORTE','RESGATE'] %}
+              <span class="text-muted" style="font-size:12px;">não integrado</span>
+            {% else %}
+              <span class="text-muted" style="font-size:12px;">-</span>
+            {% endif %}
+          </td>
         </tr>
       {% else %}
-        <tr><td colspan="10" class="text-muted text-center">Nenhuma movimentação registrada.</td></tr>
+        <tr><td colspan="11" class="text-muted text-center">Nenhuma movimentação registrada.</td></tr>
       {% endfor %}
       </tbody>
     </table>

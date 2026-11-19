@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -59,9 +60,9 @@ async def investimentos_home(
 # ── Instituições / Corretoras ────────────────────────────────────────────────
 
 @router.get("/instituicoes", response_class=HTMLResponse)
-async def listar_instituicoes(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+async def listar_instituicoes(request: Request, msg: Optional[str] = Query(None), erro: Optional[str] = Query(None), sessao=Depends(require_login), db: Session = Depends(get_db)):
     itens = db.query(InvestInstituicao).order_by(InvestInstituicao.nome).all()
-    return templates.TemplateResponse("investimentos/instituicoes.html", {"request": request, "sessao": sessao, "itens": itens})
+    return templates.TemplateResponse("investimentos/instituicoes.html", {"request": request, "sessao": sessao, "itens": itens, "msg": msg, "erro": erro})
 
 
 @router.post("/instituicoes")
@@ -74,22 +75,32 @@ async def criar_instituicao(
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
 ):
-    db.add(InvestInstituicao(nome=nome.strip(), cnpj=(cnpj or None), tipo=(tipo or None), observacoes=(observacoes or None), ativo=1))
-    db.commit()
-    return RedirectResponse(url="/investimentos/instituicoes", status_code=303)
+    try:
+        if not nome.strip():
+            raise ValueError("Informe o nome da instituição.")
+        db.add(InvestInstituicao(nome=nome.strip(), cnpj=(cnpj or None), tipo=(tipo or None), observacoes=(observacoes or None), ativo=1))
+        db.commit()
+        return RedirectResponse(url=f"/investimentos/instituicoes?msg={quote('Instituição cadastrada com sucesso.')}", status_code=303)
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/investimentos/instituicoes?erro={quote(str(e))}", status_code=303)
 
 
 # ── Carteiras ────────────────────────────────────────────────────────────────
 
 @router.get("/carteiras", response_class=HTMLResponse)
-async def listar_carteiras(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+async def listar_carteiras(request: Request, msg: Optional[str] = Query(None), erro: Optional[str] = Query(None), sessao=Depends(require_login), db: Session = Depends(get_db)):
     itens = db.query(InvestCarteira).order_by(InvestCarteira.nome).all()
     instituicoes = db.query(InvestInstituicao).filter(InvestInstituicao.ativo == 1).order_by(InvestInstituicao.nome).all()
     contas = db.query(ContaBancaria).order_by(ContaBancaria.nome_conta).all()
     moedas = service.listar_moedas(db)
+    contas_map = {c.conta_id: c.nome_conta for c in contas}
+    moedas_map = {m.idcontas_moedas: (m.contas_moedas_abrev or str(m.idcontas_moedas)) for m in moedas}
     return templates.TemplateResponse("investimentos/carteiras.html", {
         "request": request, "sessao": sessao, "itens": itens,
         "instituicoes": instituicoes, "contas": contas, "moedas": moedas,
+        "contas_map": contas_map, "moedas_map": moedas_map,
+        "msg": msg, "erro": erro,
     })
 
 
@@ -104,29 +115,38 @@ async def criar_carteira(
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
 ):
-    db.add(InvestCarteira(
-        nome=nome.strip(),
-        instituicao_id=instituicao_id or None,
-        conta_financeira_id=conta_financeira_id or None,
-        moeda_base_id=moeda_base_id or None,
-        descricao=(descricao or None),
-        ativo=1,
-    ))
-    db.commit()
-    return RedirectResponse(url="/investimentos/carteiras", status_code=303)
+    try:
+        if not nome.strip():
+            raise ValueError("Informe o nome da carteira.")
+        db.add(InvestCarteira(
+            nome=nome.strip(),
+            instituicao_id=instituicao_id or None,
+            conta_financeira_id=conta_financeira_id or None,
+            moeda_base_id=moeda_base_id or None,
+            descricao=(descricao or None),
+            ativo=1,
+        ))
+        db.commit()
+        return RedirectResponse(url=f"/investimentos/carteiras?msg={quote('Carteira cadastrada com sucesso.')}", status_code=303)
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/investimentos/carteiras?erro={quote(str(e))}", status_code=303)
 
 
 # ── Ativos / Produtos ────────────────────────────────────────────────────────
 
 @router.get("/ativos", response_class=HTMLResponse)
-async def listar_ativos(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+async def listar_ativos(request: Request, msg: Optional[str] = Query(None), erro: Optional[str] = Query(None), sessao=Depends(require_login), db: Session = Depends(get_db)):
     itens = db.query(InvestAtivo).order_by(InvestAtivo.nome).all()
     instituicoes = db.query(InvestInstituicao).filter(InvestInstituicao.ativo == 1).order_by(InvestInstituicao.nome).all()
     indexadores = db.query(InvestIndexador).order_by(InvestIndexador.nome).all()
     moedas = service.listar_moedas(db)
+    moedas_map = {m.idcontas_moedas: (m.contas_moedas_abrev or str(m.idcontas_moedas)) for m in moedas}
     return templates.TemplateResponse("investimentos/ativos.html", {
         "request": request, "sessao": sessao, "itens": itens,
         "instituicoes": instituicoes, "indexadores": indexadores, "moedas": moedas,
+        "moedas_map": moedas_map,
+        "msg": msg, "erro": erro,
     })
 
 
@@ -149,26 +169,32 @@ async def criar_ativo(
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
 ):
-    dv = date.fromisoformat(data_vencimento) if data_vencimento else None
-    taxa = _parse_decimal_br(taxa_contratada, "0") if taxa_contratada else None
-    db.add(InvestAtivo(
-        nome=nome.strip(),
-        classe=classe.strip(),
-        tipo_produto=(tipo_produto or None),
-        ticker=(ticker.strip() if ticker else None),
-        isin=(isin.strip() if isin else None),
-        emissor=(emissor or None),
-        instituicao_id=instituicao_id or None,
-        moeda_id=moeda_id or None,
-        indexador_id=indexador_id or None,
-        taxa_contratada=taxa,
-        data_vencimento=dv,
-        liquidez_diaria=1 if liquidez_diaria else 0,
-        observacoes=(observacoes or None),
-        ativo=1,
-    ))
-    db.commit()
-    return RedirectResponse(url="/investimentos/ativos", status_code=303)
+    try:
+        if not nome.strip():
+            raise ValueError("Informe o nome do ativo/produto.")
+        dv = date.fromisoformat(data_vencimento) if data_vencimento else None
+        taxa = _parse_decimal_br(taxa_contratada, "0") if taxa_contratada else None
+        db.add(InvestAtivo(
+            nome=nome.strip(),
+            classe=classe.strip(),
+            tipo_produto=(tipo_produto or None),
+            ticker=(ticker.strip() if ticker else None),
+            isin=(isin.strip() if isin else None),
+            emissor=(emissor or None),
+            instituicao_id=instituicao_id or None,
+            moeda_id=moeda_id or None,
+            indexador_id=indexador_id or None,
+            taxa_contratada=taxa,
+            data_vencimento=dv,
+            liquidez_diaria=1 if liquidez_diaria else 0,
+            observacoes=(observacoes or None),
+            ativo=1,
+        ))
+        db.commit()
+        return RedirectResponse(url=f"/investimentos/ativos?msg={quote('Ativo/produto cadastrado com sucesso.')}", status_code=303)
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/investimentos/ativos?erro={quote(str(e))}", status_code=303)
 
 
 # ── Câmbio (histórico e atualização via BrasilAPI) ────────────────────────────
@@ -298,12 +324,12 @@ async def criar_movimentacao(
         )
     except Exception as e:
         db.rollback()
-        return RedirectResponse(url=f"/investimentos/movimentacoes?erro={str(e)}", status_code=303)
+        return RedirectResponse(url=f"/investimentos/movimentacoes?erro={quote(str(e))}", status_code=303)
 
     msg = "Movimentação registrada"
     if integracao and integracao.get("ok"):
         msg += " e integrada ao financeiro (transferência criada)" if not integracao.get("reutilizado") else " (integração financeira já existente)"
-    return RedirectResponse(url=f"/investimentos/movimentacoes?msg={msg}", status_code=303)
+    return RedirectResponse(url=f"/investimentos/movimentacoes?msg={quote(msg)}", status_code=303)
 
 
 @router.get("/posicoes", response_class=HTMLResponse)

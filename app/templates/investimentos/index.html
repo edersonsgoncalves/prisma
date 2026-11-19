@@ -3,39 +3,52 @@
 {% block page_title %}Investimentos{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
   <div>
     <h1>Investimentos</h1>
-    <p>Módulo de investimentos (Fase 1) — cadastros base, câmbio e integração.</p>
+    <p>Gestão de carteiras, ativos, movimentações e posições (multi-moeda, com integração ao financeiro).</p>
   </div>
 </div>
 
-<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
-  <div class="stat-card"><div class="stat-label">Carteiras</div><div class="stat-value">{{ carteiras|length }}</div></div>
-  <div class="stat-card"><div class="stat-label">Ativos/Produtos</div><div class="stat-value">{{ ativos|length }}</div></div>
-  <div class="stat-card"><div class="stat-label">Instituições/Corretoras</div><div class="stat-value">{{ instituicoes|length }}</div></div>
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom:16px;">
+  <a href="/investimentos/carteiras" class="stat-card" style="text-decoration:none; color:inherit;">
+    <div class="stat-label">Carteiras</div><div class="stat-value">{{ carteiras|length }}</div>
+  </a>
+  <a href="/investimentos/ativos" class="stat-card" style="text-decoration:none; color:inherit;">
+    <div class="stat-label">Ativos/Produtos</div><div class="stat-value">{{ ativos|length }}</div>
+  </a>
+  <a href="/investimentos/instituicoes" class="stat-card" style="text-decoration:none; color:inherit;">
+    <div class="stat-label">Instituições/Corretoras</div><div class="stat-value">{{ instituicoes|length }}</div>
+  </a>
 </div>
 
 <div class="card" style="margin-bottom:16px;">
-  <h3 style="margin-top:0;">Acesso rápido</h3>
+  <h3 style="margin-top:0;">Fluxo sugerido (CRUD e operações)</h3>
+  <ol style="margin:0 0 12px 18px; line-height:1.8; padding-left:0;">
+    <li>Cadastre <a href="/investimentos/instituicoes"><b>instituições/corretoras</b></a>.</li>
+    <li>Crie <a href="/investimentos/carteiras"><b>carteiras</b></a> e, para integrar aportes/resgates, vincule a <b>conta financeira</b> da carteira.</li>
+    <li>Cadastre <a href="/investimentos/ativos"><b>ativos/produtos</b></a> (RF, caixinhas, ações/ETFs, FI/FII) com moeda/indexador quando aplicável.</li>
+    <li>Atualize <a href="/investimentos/cambio"><b>câmbio</b></a> (BrasilAPI ou manual) para operações em USD/EUR.</li>
+    <li>Registre <a href="/investimentos/movimentacoes"><b>movimentações</b></a> e acompanhe em <a href="/investimentos/posicoes"><b>posições</b></a>.</li>
+  </ol>
   <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-primary" href="/investimentos/instituicoes">Instituições/Corretoras</a>
     <a class="btn btn-primary" href="/investimentos/carteiras">Carteiras</a>
     <a class="btn btn-primary" href="/investimentos/ativos">Ativos/Produtos</a>
-    <a class="btn btn-primary" href="/investimentos/instituicoes">Instituições/Corretoras</a>
     <a class="btn btn-primary" href="/investimentos/movimentacoes">Movimentações</a>
     <a class="btn btn-primary" href="/investimentos/posicoes">Posições</a>
-    <a class="btn btn-secondary" href="/investimentos/cambio">Câmbio (BrasilAPI / Manual)</a>
+    <a class="btn btn-secondary" href="/investimentos/cambio">Câmbio</a>
   </div>
 </div>
 
 <div class="card">
-  <h3 style="margin-top:0;">Cobertura inicial (Fase 1)</h3>
+  <h3 style="margin-top:0;">Estado atual do módulo</h3>
   <ul style="margin:0; padding-left:18px; line-height:1.7;">
-    <li>Cadastros base: instituições/corretoras, carteiras e ativos/produtos (RF, caixinhas, RV, FI/FII) com moeda/indexador.</li>
-    <li>Multi-moeda: reuso de <code>contas_moedas</code> e histórico de câmbio em <code>invest_taxas_cambio</code>.</li>
-    <li>Câmbio: atualização automatizada via BrasilAPI com fallback para registro manual.</li>
-    <li>Integração financeira: esqueleto de contrato para aportes/resgates como transferências (idempotência/rastreabilidade a evoluir).</li>
+    <li><b>Cadastros:</b> instituições, carteiras e ativos/produtos (RF, caixinhas, RV, FI/FII) com moeda/indexador.</li>
+    <li><b>Multi-moeda:</b> reuso de <code>contas_moedas</code> e histórico de câmbio (<code>invest_taxas_cambio</code>) via BrasilAPI com fallback manual.</li>
+    <li><b>Movimentações/posições:</b> registro com atualização de posição, preço médio e lotes (FIFO simplificado).</li>
+    <li><b>Integração financeira:</b> aportes/resgates em caixa podem gerar transferência idempotente (tipo 4) entre conta externa e conta vinculada da carteira.</li>
   </ul>
-  <p class="text-muted" style="margin-top:12px; font-size:12px;">Antes de usar, execute a migração das tabelas: <code>python scripts/migrate_investimentos.py</code></p>
+  <p class="text-muted" style="margin-top:12px; font-size:12px;">Migração de tabelas: <code>python scripts/migrate_investimentos.py</code>. Indexadores padrão (CDI/Selic/IPCA): <code>python scripts/seed_invest_indexadores.py</code>.</p>
 </div>
 {% endblock %}
