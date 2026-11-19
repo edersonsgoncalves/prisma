@@ -1,0 +1,48 @@
+name: Diagnóstico da Esteira
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Listar e exibir todos os workflows em dev
+        run: |
+          echo "=== ARQUIVOS EM .github/workflows (branch dev) ==="
+          ls -la .github/workflows/
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if [ -f "$f" ]; then
+              echo "----------------------------------------"
+              echo "ARQUIVO: $f"
+              echo "----------------------------------------"
+              cat "$f"
+            fi
+          done
+
+      - name: Verificar estado das branches, PRs e Runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "=== COMPARAÇÃO DE COMMITS (main vs dev) ==="
+          git fetch origin main dev
+          echo "Último commit em main: $(git rev-parse --short origin/main) - $(git log -1 --pretty=%s origin/main)"
+          echo "Último commit em dev:  $(git rev-parse --short origin/dev) - $(git log -1 --pretty=%s origin/dev)"
+          echo "Commits em dev à frente de main: $(git rev-list --count origin/main..origin/dev)"
+
+          echo "=== PULL REQUESTS ABERTOS ==="
+          gh pr list --state open --json number,title,headRefName,baseRefName,autoMergeRequest
+
+          echo "=== ÚLTIMAS 10 EXECUÇÕES DO ACTIONS ==="
+          gh run list --limit 10
