@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Carteiras - Investimentos{% endblock %}
+{% block page_title %}Carteiras de Investimento{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Carteiras</h1>
+    <p>Carteiras/custódias, com vínculo opcional à conta financeira (tipo investimento).</p>
+  </div>
+  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Nova carteira</h3>
+  <form method="post" action="/investimentos/carteiras">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" name="nome" required></div>
+      <div class="form-group">
+        <label class="form-label">Instituição/Corretora</label>
+        <select class="form-control" name="instituicao_id">
+          <option value="">(nenhuma)</option>
+          {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Conta financeira vinculada</label>
+        <select class="form-control" name="conta_financeira_id">
+          <option value="">(sem vínculo)</option>
+          {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Moeda base</label>
+        <select class="form-control" name="moeda_base_id">
+          <option value="">(padrão)</option>
+          {% for m in moedas %}<option value="{{ m.idcontas_moedas }}">{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Descrição</label><input class="form-control" name="descricao"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar</button>
+  </form>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>ID</th><th>Nome</th><th>Instituição</th><th>Conta financeira (ref)</th><th>Moeda base (ref)</th></tr></thead>
+      <tbody>
+      {% for it in itens %}
+        <tr>
+          <td>#{{ it.id }}</td>
+          <td class="font-bold">{{ it.nome }}</td>
+          <td>{{ it.instituicao.nome if it.instituicao else '-' }}</td>
+          <td>{{ it.conta_financeira_id or '-' }}</td>
+          <td>{{ it.moeda_base_id or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted text-center">Nenhuma carteira cadastrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Investimentos{% endblock %}
+{% block page_title %}Investimentos{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Investimentos</h1>
+    <p>Módulo de investimentos (Fase 1) — cadastros base, câmbio e integração.</p>
+  </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+  <div class="stat-card"><div class="stat-label">Carteiras</div><div class="stat-value">{{ carteiras|length }}</div></div>
+  <div class="stat-card"><div class="stat-label">Ativos/Produtos</div><div class="stat-value">{{ ativos|length }}</div></div>
+  <div class="stat-card"><div class="stat-label">Instituições/Corretoras</div><div class="stat-value">{{ instituicoes|length }}</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Acesso rápido</h3>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-primary" href="/investimentos/carteiras">Carteiras</a>
+    <a class="btn btn-primary" href="/investimentos/ativos">Ativos/Produtos</a>
+    <a class="btn btn-primary" href="/investimentos/instituicoes">Instituições/Corretoras</a>
+    <a class="btn btn-secondary" href="/investimentos/cambio">Câmbio (BrasilAPI / Manual)</a>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0;">Cobertura inicial (Fase 1)</h3>
+  <ul style="margin:0; padding-left:18px; line-height:1.7;">
+    <li>Cadastros base: instituições/corretoras, carteiras e ativos/produtos (RF, caixinhas, RV, FI/FII) com moeda/indexador.</li>
+    <li>Multi-moeda: reuso de <code>contas_moedas</code> e histórico de câmbio em <code>invest_taxas_cambio</code>.</li>
+    <li>Câmbio: atualização automatizada via BrasilAPI com fallback para registro manual.</li>
+    <li>Integração financeira: esqueleto de contrato para aportes/resgates como transferências (idempotência/rastreabilidade a evoluir).</li>
+  </ul>
+  <p class="text-muted" style="margin-top:12px; font-size:12px;">Antes de usar, execute a migração das tabelas: <code>python scripts/migrate_investimentos.py</code></p>
+</div>
+{% endblock %}

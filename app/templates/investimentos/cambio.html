@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Câmbio - Investimentos{% endblock %}
+{% block page_title %}Câmbio e Taxas{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Câmbio (USD/EUR → BRL)</h1>
+    <p>Histórico em <code>invest_taxas_cambio</code>. Fonte preferencial: BrasilAPI, com fallback manual.</p>
+  </div>
+  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+</div>
+
+{% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+{% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Atualizar via BrasilAPI</h3>
+  <form method="post" action="/investimentos/cambio/atualizar" class="form-grid-2" style="align-items:end;">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-group">
+      <label class="form-label">Moeda</label>
+      <select class="form-control" name="moeda_abrev" required>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Data de referência</label>
+      <input class="form-control" type="date" name="data_referencia" required>
+    </div>
+    <div class="form-group"><button class="btn btn-primary" type="submit">Buscar e registrar</button></div>
+  </form>
+  <p class="text-muted" style="font-size:12px; margin:8px 0 0;">A moeda deve estar cadastrada em <code>contas_moedas</code> (abreviação USD/EUR/BRL). Em caso de indisponibilidade, use o registro manual.</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Registro manual (fallback)</h3>
+  <form method="post" action="/investimentos/cambio/manual" class="form-grid-2" style="align-items:end;">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-group">
+      <label class="form-label">Moeda origem</label>
+      <select class="form-control" name="moeda_origem_id" required>
+        {% for m in moedas %}<option value="{{ m.idcontas_moedas }}">{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Moeda destino</label>
+      <select class="form-control" name="moeda_destino_id" required>
+        {% for m in moedas %}<option value="{{ m.idcontas_moedas }}" {% if m.contas_moedas_abrev == 'BRL' %}selected{% endif %}>{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Data referência</label><input class="form-control" type="date" name="data_referencia" required></div>
+    <div class="form-group"><label class="form-label">Taxa</label><input class="form-control" name="taxa" placeholder="ex: 5,4321" required></div>
+    <div class="form-group"><button class="btn btn-secondary" type="submit">Registrar taxa</button></div>
+  </form>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>Data</th><th>Origem (id)</th><th>Destino (id)</th><th>Taxa</th><th>Tipo</th><th>Fonte</th></tr></thead>
+      <tbody>
+      {% for t in taxas %}
+        <tr>
+          <td>{{ t.data_referencia }}</td>
+          <td>{{ t.moeda_origem_id }}</td>
+          <td>{{ t.moeda_destino_id }}</td>
+          <td class="font-bold">{{ t.taxa }}</td>
+          <td>{{ t.tipo }}</td>
+          <td>{{ t.fonte or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-muted text-center">Nenhuma taxa registrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

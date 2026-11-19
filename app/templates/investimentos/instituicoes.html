@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Instituições - Investimentos{% endblock %}
+{% block page_title %}Instituições / Corretoras{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end">
+  <div>
+    <h1>Instituições / Corretoras</h1>
+    <p>Cadastre custodiante, corretora ou banco emissor.</p>
+  </div>
+  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Nova instituição</h3>
+  <form method="post" action="/investimentos/instituicoes">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" name="nome" required></div>
+      <div class="form-group"><label class="form-label">Tipo</label><input class="form-control" name="tipo" placeholder="Corretora, Banco, Custodiante"></div>
+      <div class="form-group"><label class="form-label">CNPJ</label><input class="form-control" name="cnpj"></div>
+      <div class="form-group"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar</button>
+  </form>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>ID</th><th>Nome</th><th>Tipo</th><th>CNPJ</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for it in itens %}
+        <tr>
+          <td>#{{ it.id }}</td>
+          <td class="font-bold">{{ it.nome }}</td>
+          <td>{{ it.tipo or '-' }}</td>
+          <td>{{ it.cnpj or '-' }}</td>
+          <td>{{ 'Ativa' if it.ativo else 'Inativa' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted text-center">Nenhuma instituição cadastrada.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
