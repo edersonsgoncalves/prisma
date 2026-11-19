@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<style>
+  .switch-wrapper { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .3s; border-radius: 20px; }
+  .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+  input:checked + .slider { background-color: var(--primary); }
+  input:checked + .slider:before { transform: translateX(16px); }
+  .switch-label { font-size: 11px; font-weight: 700; color: #888; }
+  input:checked ~ .label-sim { color: var(--success); }
+  input:not(:checked) ~ .label-nao { color: white; }
+</style>
+{% endblock %}
+
+{% block title %}Investir{% endblock %}
+{% block page_title %}Investir / Movimentar recursos da carteira{% endblock %}
+
+{% block content %}
+<div class="card max-w-2xl mx-auto">
+  {% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+  {% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
+
+  <div style="margin-bottom:16px;">
+    <p class="text-muted" style="margin:0;">Registre uma movimentação de <b>caixa</b> entre uma conta financeira e uma carteira de investimento. Isso cria a transferência no financeiro (tipo 4) e o registro correspondente no módulo de investimentos.</p>
+  </div>
+
+  <form action="/lancamentos/investir" method="post">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+
+    <div class="form-group">
+      <label class="form-label">Tipo de movimentação</label>
+      <select name="direcao" class="form-control" required id="direcao">
+        <option value="APORTAR">Aportar (enviar recursos para a carteira de investimento)</option>
+        <option value="RESGATAR">Resgatar/Retirar (trazer recursos da carteira para a conta)</option>
+      </select>
+      <small class="text-muted" id="ajuda-direcao">Dinheiro sai da conta financeira e entra no caixa da carteira vinculada.</small>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label" id="lbl-conta">Conta financeira (origem do aporte)</label>
+        <select name="conta_externa_id" class="form-control" required>
+          <option value="">Selecione...</option>
+          {% for c in contas %}
+          <option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Carteira de investimento</label>
+        <select name="carteira_id" class="form-control" required>
+          <option value="">Selecione...</option>
+          {% for c in carteiras %}
+          <option value="{{ c.id }}">{{ c.nome }}{% if not c.conta_financeira_id %} (sem conta vinculada — integração indisponível){% endif %}</option>
+          {% endfor %}
+        </select>
+        <small class="text-muted">A carteira precisa ter <b>conta financeira vinculada</b> para integração automática.</small>
+      </div>
+    </div>
+
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Valor</label>
+        <input type="text" name="valor" class="form-control" placeholder="0,00" onkeyup="formatCurrency(this)" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Data</label>
+        <input type="date" name="data" class="form-control" value="{{ hoje }}" required>
+      </div>
+    </div>
+
+    <div class="form-group mb-4">
+      <label class="form-label mb-0" style="margin-right: 4px;">Transferência já efetivada?</label>
+      <label class="switch-wrapper">
+        <span class="switch-label label-nao">não</span>
+        <div class="switch">
+          <input type="checkbox" id="checkEfetivado" checked onchange="document.getElementById('input_efetivado').value = this.checked ? '1' : '0'">
+          <span class="slider"></span>
+        </div>
+        <span class="switch-label label-sim">sim</span>
+      </label>
+      <input type="hidden" name="efetivado" id="input_efetivado" value="1">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Observações</label>
+      <input type="text" name="observacoes" class="form-control" placeholder="Opcional">
+    </div>
+
+    <hr>
+    <div class="flex justify-end gap-3">
+      <a href="/extrato" class="btn btn-ghost">Cancelar</a>
+      <button type="submit" class="btn btn-primary">Confirmar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  var dir = document.getElementById('direcao');
+  var lbl = document.getElementById('lbl-conta');
+  var ajuda = document.getElementById('ajuda-direcao');
+  function upd(){
+    if(dir.value === 'APORTAR'){
+      lbl.textContent = 'Conta financeira (origem do aporte)';
+      ajuda.textContent = 'Dinheiro sai da conta financeira e entra no caixa da carteira vinculada (transferência tipo 4).';
+    } else {
+      lbl.textContent = 'Conta financeira (destino do resgate)';
+      ajuda.textContent = 'Dinheiro sai do caixa da carteira vinculada e entra na conta financeira (transferência tipo 4).';
+    }
+  }
+  if(dir){ dir.addEventListener('change', upd); upd(); }
+})();
+</script>
+{% endblock %}

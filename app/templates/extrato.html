@@ -166,9 +166,10 @@
     <p>Histórico de lançamentos para {{ mes_por_extenso(mes, ano) }}</p>
   </div>
   
-  <div class="flex gap-2">
+  <div class="flex gap-2" style="flex-wrap:wrap;">
     <button class="btn btn-md btn-primary" onclick="openModal('modalNovoLancamento')">+ Receita / Despesa</button>
     <button class="btn btn-md btn-primary" onclick="openModal('modalNovaTransferencia')">+ Transferência</button>
+    <a class="btn btn-md btn-secondary" href="/lancamentos/investir">Investir</a>
   </div>
 </div>
 

@@ -36,50 +36,101 @@
 
 <div class="card" style="margin-bottom:16px;">
   <h3 style="margin-top:0;">Nova movimentação</h3>
+  <p class="text-muted" style="margin-top:-4px;">Escolha o que deseja registrar: movimentar o <b>caixa da carteira</b> (entrada/saída de recursos) ou operar em um <b>ativo</b> (aplicar/comprar, resgatar/vender). Para aportar dinheiro da sua conta para a carteira, você também pode usar <a href="/lancamentos/investir"><b>Investir</b></a> no menu de Lançamentos.</p>
+
   <form method="post" action="/investimentos/movimentacoes" id="form-mov">
     <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
-    <div class="form-grid-2">
+
+    <div class="form-grid-2" style="margin-bottom:12px;">
       <div class="form-group">
         <label class="form-label">Carteira *</label>
         <select class="form-control" name="carteira_id" required>
           <option value="">Selecione...</option>
-          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}{% if c.conta_financeira_id %} (conta fin. vinculada #{{ c.conta_financeira_id }}){% endif %}</option>{% endfor %}
+          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}{% if c.conta_financeira_id %} (conta vinculada #{{ c.conta_financeira_id }}){% else %} (sem conta vinculada){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Tipo de movimentação *</label>
-        <select class="form-control" name="tipo" id="tipo-mov" required>
-          <optgroup label="Caixa da carteira (fronteira financeira)">
-            <option value="APORTE_CAIXA">Aporte de caixa na carteira (entrada de recursos)</option>
-            <option value="RETIRADA_CAIXA">Retirada de caixa para conta externa</option>
-          </optgroup>
-          <optgroup label="Operações em ativo (alocação/posição)">
-            <option value="APLICACAO">Aplicação em ativo/produto (RF, caixinha, FI/FII)</option>
-            <option value="COMPRA">Compra de ativo (RV, ETF, fundo cotado)</option>
-            <option value="RESGATE_ATIVO">Resgate/Vencimento de ativo/produto</option>
-            <option value="VENDA">Venda de ativo (RV, ETF, fundo cotado)</option>
-          </optgroup>
-          <optgroup label="Outros">
-            <option value="AJUSTE">Ajuste</option>
-          </optgroup>
-        </select>
-        <small class="text-muted" id="tipo-ajuda"></small>
+        <label class="form-label">Data negociação *</label>
+        <input class="form-control" type="date" name="data_negociacao" required>
       </div>
+    </div>
 
-      <div class="form-group" id="grp-ativo">
-        <label class="form-label">Ativo/Produto <span id="ativo-obrig" class="text-muted">(obrigatório em operações no ativo)</span></label>
-        <select class="form-control" name="ativo_id" id="ativo-id">
-          <option value="">(nenhum — apenas caixa)</option>
-          {% for a in ativos %}<option value="{{ a.id }}">{{ a.nome }}{% if a.ticker %} ({{ a.ticker }}){% endif %}</option>{% endfor %}
+    <div class="form-group" style="margin-bottom:14px;">
+      <label class="form-label">O que você quer registrar? *</label>
+      <div class="flex gap-2" style="flex-wrap:wrap;">
+        <label class="btn btn-secondary" style="cursor:pointer; gap:8px;">
+          <input type="radio" name="modo" value="CAIXA" checked onchange="syncModo()"> Movimentar caixa da carteira
+        </label>
+        <label class="btn btn-secondary" style="cursor:pointer; gap:8px;">
+          <input type="radio" name="modo" value="ATIVO" onchange="syncModo()"> Operar em ativo/produto
+        </label>
+        <label class="btn btn-secondary" style="cursor:pointer; gap:8px;">
+          <input type="radio" name="modo" value="AJUSTE" onchange="syncModo()"> Ajuste
+        </label>
+      </div>
+      <small class="text-muted" id="modo-ajuda" style="display:block; margin-top:6px;"></small>
+    </div>
+
+    <!-- Tipo efetivo enviado ao backend -->
+    <div class="form-grid-2">
+      <div class="form-group" id="grp-tipo-caixa">
+        <label class="form-label">Movimentação de caixa *</label>
+        <select class="form-control" id="tipo-caixa">
+          <option value="APORTE_CAIXA">Aporte de caixa (entrada de recursos na carteira)</option>
+          <option value="RETIRADA_CAIXA">Retirada de caixa (saída para conta externa)</option>
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Data negociação *</label><input class="form-control" type="date" name="data_negociacao" required></div>
+      <div class="form-group" id="grp-tipo-ativo" style="display:none;">
+        <label class="form-label">Operação no ativo *</label>
+        <select class="form-control" id="tipo-ativo">
+          <option value="APLICACAO">Aplicação (RF, caixinha, FI/FII)</option>
+          <option value="COMPRA">Compra (ação, ETF, fundo cotado)</option>
+          <option value="RESGATE_ATIVO">Resgate/Vencimento (RF, caixinha, fundo)</option>
+          <option value="VENDA">Venda (ação, ETF, fundo cotado)</option>
+        </select>
+      </div>
+      <input type="hidden" name="tipo" id="tipo-final" value="APORTE_CAIXA">
 
-      <div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" name="quantidade" placeholder="0,00 (obrigatório em operações no ativo)"></div>
-      <div class="form-group"><label class="form-label">Preço unitário (moeda original)</label><input class="form-control" name="preco_unitario" placeholder="0,00"></div>
-      <div class="form-group"><label class="form-label">Valor (bruto) *</label><input class="form-control" name="valor_bruto" placeholder="0,00"></div>
-      <div class="form-group"><label class="form-label">Taxas/custos</label><input class="form-control" name="taxas_custos" placeholder="0,00"></div>
+      <div class="form-group" id="grp-valor-principal">
+        <label class="form-label">Valor *</label>
+        <input class="form-control" name="valor_bruto" placeholder="0,00">
+        <small class="text-muted" id="valor-ajuda">Valor movimentado.</small>
+      </div>
+    </div>
 
+    <div id="sec-ativo" style="display:none;">
+      <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,0.02);">
+        <div class="form-grid-2">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Ativo/Produto *</label>
+            <select class="form-control" name="ativo_id" id="ativo-id">
+              <option value="">Selecione o ativo...</option>
+              {% for a in ativos %}<option value="{{ a.id }}">{{ a.nome }}{% if a.ticker %} ({{ a.ticker }}){% endif %}</option>{% endfor %}
+            </select>
+            <small class="text-muted">Cadastre antes em <a href="/investimentos/ativos">Ativos/Produtos</a>, se necessário.</small>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Origem/Destino dos recursos</label>
+            <select class="form-control" id="recurso-modo">
+              <option value="CAIXA">Usar caixa da carteira (já disponível na corretora)</option>
+              <option value="EXTERNO">Direto da/para conta financeira externa (integrar transferência)</option>
+            </select>
+            <small class="text-muted" id="recurso-ajuda"></small>
+          </div>
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label">Quantidade *</label><input class="form-control" name="quantidade" placeholder="0,00"></div>
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label">Preço unitário (moeda original)</label><input class="form-control" name="preco_unitario" placeholder="0,00"></div>
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label">Taxas/custos</label><input class="form-control" name="taxas_custos" placeholder="0,00"></div>
+          <div class="form-group" style="margin-bottom:0;"><label class="form-label">Corretora</label>
+            <select class="form-control" name="corretora_id">
+              <option value="">(nenhuma)</option>
+              {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-grid-2" id="sec-comum-extra">
       <div class="form-group">
         <label class="form-label">Moeda (operação/ativo)</label>
         <select class="form-control" name="moeda_id">
@@ -88,37 +139,33 @@
         </select>
       </div>
       <div class="form-group"><label class="form-label">Taxa de câmbio (→ BRL)</label><input class="form-control" name="taxa_cambio" placeholder="ex: 5,4321 (se aplicável)"></div>
-      <div class="form-group">
-        <label class="form-label">Corretora</label>
-        <select class="form-control" name="corretora_id">
-          <option value="">(nenhuma)</option>
-          {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
-
-      <div class="form-group" id="grp-integracao" style="grid-column:1/-1; padding:12px; border:1px dashed var(--border, #334155); border-radius:8px;">
-        <label class="flex items-center gap-2" style="cursor:pointer; font-weight:600;">
-          <input type="checkbox" name="integrar_financeiro" value="1" id="chk-integrar"> <span id="integrar-titulo">Integrar com financeiro (transferência tipo 4)</span>
-        </label>
-        <p class="text-muted" style="font-size:12px; margin:6px 0 10px;" id="integrar-ajuda">Marque para refletir a movimentação na conta financeira externa vinculada à carteira.</p>
-        <div class="form-grid-2">
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label" id="lbl-conta-ext">Conta financeira externa</label>
-            <select class="form-control" name="conta_externa_id" id="conta-ext">
-              <option value="">Selecione...</option>
-              {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Efetivar transferência</label>
-            <select class="form-control" name="efetivado"><option value="1" selected>Sim</option><option value="0">Não</option></select>
-          </div>
-        </div>
-        <p class="text-muted" style="font-size:12px; margin:8px 0 0;">A carteira deve ter <b>conta financeira vinculada</b>. A transferência é idempotente (correlação) entre conta externa e conta vinculada. Para casos em que a conta de origem é a própria conta vinculada (ex.: banco/corretora integrados), a transferência automática não se aplica — registre conforme o fluxo adequado.</p>
-      </div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
     </div>
-    <button class="btn btn-primary" type="submit">Registrar movimentação</button>
+
+    <div class="form-group" id="grp-integracao" style="padding:12px; border:1px dashed var(--border, #334155); border-radius:8px; margin-top:4px;">
+      <label class="flex items-center gap-2" style="cursor:pointer; font-weight:600;">
+        <input type="checkbox" name="integrar_financeiro" value="1" id="chk-integrar"> <span id="integrar-titulo">Integrar com financeiro (transferência tipo 4)</span>
+      </label>
+      <p class="text-muted" style="font-size:12px; margin:6px 0 10px;" id="integrar-ajuda"></p>
+      <div class="form-grid-2">
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label" id="lbl-conta-ext">Conta financeira externa</label>
+          <select class="form-control" name="conta_externa_id" id="conta-ext">
+            <option value="">Selecione...</option>
+            {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label class="form-label">Efetivar transferência</label>
+          <select class="form-control" name="efetivado"><option value="1" selected>Sim</option><option value="0">Não</option></select>
+        </div>
+      </div>
+      <p class="text-muted" style="font-size:12px; margin:8px 0 0;">Requer carteira com <b>conta financeira vinculada</b>. Se a conta externa for a própria conta vinculada (caso integrado banco/corretora), a transferência automática não se aplica.</p>
+    </div>
+
+    <div style="margin-top:12px;">
+      <button class="btn btn-primary" type="submit">Registrar movimentação</button>
+    </div>
   </form>
 </div>
 
@@ -159,54 +206,117 @@
 
 <script>
 (function() {
-  var tipo = document.getElementById('tipo-mov');
-  var ajuda = document.getElementById('tipo-ajuda');
+  var tipoCaixa = document.getElementById('tipo-caixa');
+  var tipoAtivo = document.getElementById('tipo-ativo');
+  var tipoFinal = document.getElementById('tipo-final');
+  var secAtivo = document.getElementById('sec-ativo');
+  var grpTipoCaixa = document.getElementById('grp-tipo-caixa');
+  var grpTipoAtivo = document.getElementById('grp-tipo-ativo');
   var grpIntegrar = document.getElementById('grp-integracao');
   var chk = document.getElementById('chk-integrar');
   var tituloInt = document.getElementById('integrar-titulo');
   var ajudaInt = document.getElementById('integrar-ajuda');
   var lblConta = document.getElementById('lbl-conta-ext');
-  var ativoObrig = document.getElementById('ativo-obrig');
-  function isCash(t){ return t === 'APORTE_CAIXA' || t === 'RETIRADA_CAIXA'; }
+  var modoAjuda = document.getElementById('modo-ajuda');
+  var recursoModo = document.getElementById('recurso-modo');
+  var recursoAjuda = document.getElementById('recurso-ajuda');
+  var valorAjuda = document.getElementById('valor-ajuda');
+  var ativoSelect = document.getElementById('ativo-id');
+
+  function getModo(){
+    var r = document.querySelector('input[name="modo"]:checked');
+    return r ? r.value : 'CAIXA';
+  }
   function isAssetIn(t){ return t === 'APLICACAO' || t === 'COMPRA'; }
   function isAssetOut(t){ return t === 'RESGATE_ATIVO' || t === 'VENDA'; }
-  function isAsset(t){ return isAssetIn(t) || isAssetOut(t); }
-  function update(){
-    var t = tipo.value;
-    if (isCash(t)) {
-      ajuda.textContent = t === 'APORTE_CAIXA'
-        ? 'Entrada de recursos na carteira (ex.: transferência da conta bancária para a corretora).'
-        : 'Saída de recursos da carteira para conta externa (saque/resgate para o banco).';
+
+  window.syncModo = function() {
+    var modo = getModo();
+    if (modo === 'CAIXA') {
+      grpTipoCaixa.style.display = '';
+      grpTipoAtivo.style.display = 'none';
+      secAtivo.style.display = 'none';
       grpIntegrar.style.display = '';
-      ativoObrig.textContent = '(não se aplica a caixa)';
-      tituloInt.textContent = 'Integrar com financeiro (transferência tipo 4)';
-      ajudaInt.textContent = t === 'APORTE_CAIXA'
-        ? 'Cria transferência da conta externa para a conta financeira vinculada da carteira.'
-        : 'Cria transferência da conta financeira vinculada da carteira para a conta externa.';
-      lblConta.textContent = t === 'APORTE_CAIXA' ? 'Conta financeira externa (origem do aporte)' : 'Conta financeira externa (destino da retirada)';
-    } else if (isAsset(t)) {
-      ajuda.textContent = isAssetIn(t)
-        ? 'Consome caixa da carteira para adquirir o ativo, ou financie direto pela conta externa (integração).'
-        : 'Gera caixa na carteira ao liquidar o ativo, ou envie direto para conta externa (integração).';
-      grpIntegrar.style.display = '';
-      ativoObrig.textContent = '(obrigatório)';
-      if (isAssetIn(t)) {
-        tituloInt.textContent = 'Financiar direto pela conta externa (integração)';
-        ajudaInt.textContent = 'Se marcado, cria transferência da conta externa para a conta vinculada da carteira neste fluxo (aplicação direta, sem aporte em caixa separado). Se desmarcado, a aplicação consome o caixa da carteira.';
-        lblConta.textContent = 'Conta financeira externa (origem dos recursos)';
-      } else {
-        tituloInt.textContent = 'Enviar recursos direto para conta externa (integração)';
-        ajudaInt.textContent = 'Se marcado, cria transferência da conta vinculada da carteira para a conta externa neste fluxo. Se desmarcado, o valor fica no caixa da carteira.';
-        lblConta.textContent = 'Conta financeira externa (destino dos recursos)';
-      }
-    } else {
-      ajuda.textContent = 'Ajuste de registro/posição conforme necessário.';
+      tipoFinal.value = tipoCaixa.value;
+      modoAjuda.textContent = 'Registre entrada ou saída de recursos no caixa da carteira (fronteira com o financeiro). Não altera posições em ativos.';
+      valorAjuda.textContent = 'Valor do aporte/retirada.';
+      syncCaixa();
+    } else if (modo === 'ATIVO') {
+      grpTipoCaixa.style.display = 'none';
+      grpTipoAtivo.style.display = '';
+      secAtivo.style.display = '';
+      tipoFinal.value = tipoAtivo.value;
+      modoAjuda.textContent = 'Registre aplicação/compra ou resgate/venda de um ativo. Isso atualiza posição, preço médio e lotes.';
+      valorAjuda.textContent = 'Valor bruto da operação (se vazio, pode ser calculado por quantidade × preço unitário).';
+      syncAtivo();
+    } else { // AJUSTE
+      grpTipoCaixa.style.display = 'none';
+      grpTipoAtivo.style.display = 'none';
+      secAtivo.style.display = 'none';
       grpIntegrar.style.display = 'none';
-      ativoObrig.textContent = '(opcional)';
       if (chk) chk.checked = false;
+      tipoFinal.value = 'AJUSTE';
+      modoAjuda.textContent = 'Ajuste manual de registro. Use com cuidado.';
+      valorAjuda.textContent = 'Valor de referência do ajuste (se aplicável).';
+    }
+  };
+
+  function syncCaixa() {
+    var t = tipoCaixa.value;
+    tipoFinal.value = t;
+    grpIntegrar.style.display = '';
+    chk.disabled = false;
+    chk.onclick = null;
+    tituloInt.textContent = 'Integrar com financeiro (transferência tipo 4)';
+    if (t === 'APORTE_CAIXA') {
+      ajudaInt.textContent = 'Cria transferência da conta externa para a conta financeira vinculada da carteira (aporte de recursos).';
+      lblConta.textContent = 'Conta financeira externa (origem do aporte)';
+    } else {
+      ajudaInt.textContent = 'Cria transferência da conta financeira vinculada da carteira para a conta externa (retirada/saque).';
+      lblConta.textContent = 'Conta financeira externa (destino da retirada)';
     }
   }
-  if (tipo) { tipo.addEventListener('change', update); update(); }
+
+  function syncAtivo() {
+    var t = tipoAtivo.value;
+    tipoFinal.value = t;
+    var modoRec = recursoModo ? recursoModo.value : 'CAIXA';
+    if (modoRec === 'EXTERNO') {
+      grpIntegrar.style.display = '';
+      chk.checked = true;
+      chk.disabled = false;
+      chk.onclick = function(){ return false; }; // obrigatório neste modo
+      if (isAssetIn(t)) {
+        tituloInt.textContent = 'Financiamento direto pela conta externa (transferência integrada)';
+        ajudaInt.textContent = 'A aplicação será registrada no ativo e o recurso virá direto da conta externa (transferência externa → conta vinculada da carteira), sem aporte em caixa separado.';
+        lblConta.textContent = 'Conta financeira externa (origem dos recursos)';
+        recursoAjuda.textContent = 'Fluxo único: saída da conta externa e aplicação no ativo.';
+      } else {
+        tituloInt.textContent = 'Envio direto para conta externa (transferência integrada)';
+        ajudaInt.textContent = 'O resgate/venda será registrado e o recurso irá direto para a conta externa (transferência conta vinculada → externa), sem passar pelo caixa da carteira.';
+        lblConta.textContent = 'Conta financeira externa (destino dos recursos)';
+        recursoAjuda.textContent = 'Fluxo único: liquidação do ativo e envio para conta externa.';
+      }
+    } else {
+      // usa caixa da carteira: sem integração financeira direta nesta operação
+      grpIntegrar.style.display = 'none';
+      chk.checked = false;
+      chk.disabled = false;
+      chk.onclick = null;
+      if (isAssetIn(t)) {
+        recursoAjuda.textContent = 'Consome o saldo de caixa da carteira para adquirir o ativo (sem transferência financeira nesta operação).';
+      } else {
+        recursoAjuda.textContent = 'O valor da venda/resgate entra no saldo de caixa da carteira (sem transferência financeira nesta operação).';
+      }
+    }
+  }
+
+  if (tipoCaixa) tipoCaixa.addEventListener('change', function(){ if(getModo()==='CAIXA') syncCaixa(); });
+  if (tipoAtivo) tipoAtivo.addEventListener('change', function(){ if(getModo()==='ATIVO') syncAtivo(); });
+  if (recursoModo) recursoModo.addEventListener('change', function(){ if(getModo()==='ATIVO') syncAtivo(); });
+
+  // inicializa
+  syncModo();
 })();
 </script>
 {% endblock %}
