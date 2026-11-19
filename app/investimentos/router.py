@@ -25,6 +25,7 @@ from .models import (
     InvestTaxaCambio,
 )
 from . import service
+from .service import tipo_label, calcular_saldo_caixa_carteira, TIPOS_CAIXA_ENTRADA, TIPOS_CAIXA_SAIDA, TIPOS_ATIVO_ENTRADA, TIPOS_ATIVO_SAIDA
 
 router = APIRouter(prefix="/investimentos", tags=["investimentos"])
 
@@ -96,10 +97,12 @@ async def listar_carteiras(request: Request, msg: Optional[str] = Query(None), e
     moedas = service.listar_moedas(db)
     contas_map = {c.conta_id: c.nome_conta for c in contas}
     moedas_map = {m.idcontas_moedas: (m.contas_moedas_abrev or str(m.idcontas_moedas)) for m in moedas}
+    saldos_caixa = {c.id: calcular_saldo_caixa_carteira(db, c.id) for c in itens}
     return templates.TemplateResponse("investimentos/carteiras.html", {
         "request": request, "sessao": sessao, "itens": itens,
         "instituicoes": instituicoes, "contas": contas, "moedas": moedas,
         "contas_map": contas_map, "moedas_map": moedas_map,
+        "saldos_caixa": saldos_caixa,
         "msg": msg, "erro": erro,
     })
 
@@ -266,9 +269,11 @@ async def listar_movimentacoes(request: Request, msg: Optional[str] = Query(None
     instituicoes = db.query(InvestInstituicao).filter(InvestInstituicao.ativo == 1).order_by(InvestInstituicao.nome).all()
     moedas = service.listar_moedas(db)
     contas = db.query(ContaBancaria).order_by(ContaBancaria.nome_conta).all()
+    saldos_caixa = {c.id: calcular_saldo_caixa_carteira(db, c.id) for c in carteiras}
     return templates.TemplateResponse("investimentos/movimentacoes.html", {
         "request": request, "sessao": sessao, "itens": itens,
         "carteiras": carteiras, "ativos": ativos, "instituicoes": instituicoes, "moedas": moedas, "contas": contas,
+        "saldos_caixa": saldos_caixa, "tipo_label": tipo_label,
         "msg": msg, "erro": erro,
     })
 
@@ -329,6 +334,9 @@ async def criar_movimentacao(
     msg = "Movimentação registrada"
     if integracao and integracao.get("ok"):
         msg += " e integrada ao financeiro (transferência criada)" if not integracao.get("reutilizado") else " (integração financeira já existente)"
+    elif integracao and not integracao.get("ok"):
+        # não deveria ocorrer (serviço levanta erro), mas por segurança
+        pass
     return RedirectResponse(url=f"/investimentos/movimentacoes?msg={quote(msg)}", status_code=303)
 
 

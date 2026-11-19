@@ -3,53 +3,83 @@
 {% block page_title %}Movimentações{% endblock %}
 
 {% block content %}
-<div class="page-header flex justify-between items-end">
+<div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
   <div>
     <h1>Movimentações</h1>
-    <p>Registro de operações (compra/venda/aplicação/resgate) com atualização de posição e lotes (base).</p>
+    <p>Fluxo separado: <b>caixa da carteira</b> (fronteira com o financeiro) e <b>operações em ativos</b> (alocação/posições).</p>
   </div>
-  <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-secondary" href="/investimentos/posicoes">Posições</a>
+    <a class="btn btn-secondary" href="/investimentos/carteiras">Carteiras</a>
+    <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  </div>
 </div>
 
 {% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
 {% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
 
+{% if saldos_caixa %}
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Saldo de caixa por carteira (derivado)</h3>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    {% for c in carteiras %}
+      <div style="padding:8px 12px; border:1px solid var(--border,#334155); border-radius:8px; min-width:180px;">
+        <div class="font-bold" style="font-size:13px;">{{ c.nome }}</div>
+        <div style="font-size:18px; margin-top:2px;">{{ saldos_caixa.get(c.id, 0) }}</div>
+        <div class="text-muted" style="font-size:11px;">caixa (movimentações registradas)</div>
+      </div>
+    {% endfor %}
+  </div>
+  <p class="text-muted" style="font-size:12px; margin:10px 0 0;">Aporte/retirada alteram o caixa da carteira; aplicação/compra consome caixa e resgate/venda gera caixa. Integrações financeiras (tipo 4) representam a fronteira com contas externas.</p>
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:16px;">
   <h3 style="margin-top:0;">Nova movimentação</h3>
-  <form method="post" action="/investimentos/movimentacoes">
+  <form method="post" action="/investimentos/movimentacoes" id="form-mov">
     <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
     <div class="form-grid-2">
       <div class="form-group">
         <label class="form-label">Carteira *</label>
         <select class="form-control" name="carteira_id" required>
           <option value="">Selecione...</option>
-          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}{% if c.conta_financeira_id %} (conta fin. #{{ c.conta_financeira_id }}){% endif %}</option>{% endfor %}
+          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}{% if c.conta_financeira_id %} (conta fin. vinculada #{{ c.conta_financeira_id }}){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Tipo *</label>
-        <select class="form-control" name="tipo" required>
-          <option value="COMPRA">Compra (RV/Fundos)</option>
-          <option value="VENDA">Venda (RV/Fundos)</option>
-          <option value="APLICACAO">Aplicação (RF/Caixinha)</option>
-          <option value="RESGATE_ATIVO">Resgate/Vencimento (RF/Caixinha)</option>
-          <option value="APORTE">Aporte em caixa (carteira) — integração financeira</option>
-          <option value="RESGATE">Resgate em caixa (carteira) — integração financeira</option>
-          <option value="AJUSTE">Ajuste</option>
+        <label class="form-label">Tipo de movimentação *</label>
+        <select class="form-control" name="tipo" id="tipo-mov" required>
+          <optgroup label="Caixa da carteira (fronteira financeira)">
+            <option value="APORTE_CAIXA">Aporte de caixa na carteira (entrada de recursos)</option>
+            <option value="RETIRADA_CAIXA">Retirada de caixa para conta externa</option>
+          </optgroup>
+          <optgroup label="Operações em ativo (alocação/posição)">
+            <option value="APLICACAO">Aplicação em ativo/produto (RF, caixinha, FI/FII)</option>
+            <option value="COMPRA">Compra de ativo (RV, ETF, fundo cotado)</option>
+            <option value="RESGATE_ATIVO">Resgate/Vencimento de ativo/produto</option>
+            <option value="VENDA">Venda de ativo (RV, ETF, fundo cotado)</option>
+          </optgroup>
+          <optgroup label="Outros">
+            <option value="AJUSTE">Ajuste</option>
+          </optgroup>
         </select>
+        <small class="text-muted" id="tipo-ajuda"></small>
       </div>
-      <div class="form-group">
-        <label class="form-label">Ativo/Produto</label>
-        <select class="form-control" name="ativo_id">
-          <option value="">(nenhum / caixa)</option>
+
+      <div class="form-group" id="grp-ativo">
+        <label class="form-label">Ativo/Produto <span id="ativo-obrig" class="text-muted">(obrigatório em operações no ativo)</span></label>
+        <select class="form-control" name="ativo_id" id="ativo-id">
+          <option value="">(nenhum — apenas caixa)</option>
           {% for a in ativos %}<option value="{{ a.id }}">{{ a.nome }}{% if a.ticker %} ({{ a.ticker }}){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="form-group"><label class="form-label">Data negociação *</label><input class="form-control" type="date" name="data_negociacao" required></div>
-      <div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" name="quantidade" placeholder="0,00"></div>
+
+      <div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" name="quantidade" placeholder="0,00 (obrigatório em operações no ativo)"></div>
       <div class="form-group"><label class="form-label">Preço unitário (moeda original)</label><input class="form-control" name="preco_unitario" placeholder="0,00"></div>
-      <div class="form-group"><label class="form-label">Valor (bruto/líquido) *</label><input class="form-control" name="valor_bruto" placeholder="0,00 (necessário p/ aporte/resgate)"></div>
+      <div class="form-group"><label class="form-label">Valor (bruto) *</label><input class="form-control" name="valor_bruto" placeholder="0,00"></div>
       <div class="form-group"><label class="form-label">Taxas/custos</label><input class="form-control" name="taxas_custos" placeholder="0,00"></div>
+
       <div class="form-group">
         <label class="form-label">Moeda (operação/ativo)</label>
         <select class="form-control" name="moeda_id">
@@ -65,15 +95,17 @@
           {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
         </select>
       </div>
+      <div class="form-group"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
 
-      <div class="form-group" style="grid-column:1/-1; padding:12px; border:1px dashed var(--border, #334155); border-radius:8px;">
+      <div class="form-group" id="grp-integracao" style="grid-column:1/-1; padding:12px; border:1px dashed var(--border, #334155); border-radius:8px;">
         <label class="flex items-center gap-2" style="cursor:pointer; font-weight:600;">
-          <input type="checkbox" name="integrar_financeiro" value="1"> Integrar com financeiro (criar transferência) — para APORTE/RESGATE
+          <input type="checkbox" name="integrar_financeiro" value="1" id="chk-integrar"> <span id="integrar-titulo">Integrar com financeiro (transferência tipo 4)</span>
         </label>
-        <div class="form-grid-2" style="margin-top:10px;">
+        <p class="text-muted" style="font-size:12px; margin:6px 0 10px;" id="integrar-ajuda">Marque para refletir a movimentação na conta financeira externa vinculada à carteira.</p>
+        <div class="form-grid-2">
           <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Conta financeira externa (origem no aporte / destino no resgate)</label>
-            <select class="form-control" name="conta_externa_id">
+            <label class="form-label" id="lbl-conta-ext">Conta financeira externa</label>
+            <select class="form-control" name="conta_externa_id" id="conta-ext">
               <option value="">Selecione...</option>
               {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
             </select>
@@ -83,14 +115,11 @@
             <select class="form-control" name="efetivado"><option value="1" selected>Sim</option><option value="0">Não</option></select>
           </div>
         </div>
-        <p class="text-muted" style="font-size:12px; margin:8px 0 0;">A carteira deve ter <b>conta financeira vinculada</b>. A transferência é criada de forma idempotente (referência/correlação) entre a conta externa e a conta vinculada da carteira.</p>
+        <p class="text-muted" style="font-size:12px; margin:8px 0 0;">A carteira deve ter <b>conta financeira vinculada</b>. A transferência é idempotente (correlação) entre conta externa e conta vinculada. Para casos em que a conta de origem é a própria conta vinculada (ex.: banco/corretora integrados), a transferência automática não se aplica — registre conforme o fluxo adequado.</p>
       </div>
-
-      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
     </div>
     <button class="btn btn-primary" type="submit">Registrar movimentação</button>
   </form>
-  <p class="text-muted" style="font-size:12px; margin-top:8px;">Compra/aplicação cria lote e atualiza preço médio; venda/resgate baixa posição (FIFO simplificado).</p>
 </div>
 
 <div class="card p-0 overflow-hidden">
@@ -102,7 +131,7 @@
         <tr>
           <td>{{ it.data_negociacao }}</td>
           <td>{{ it.carteira.nome if it.carteira else ('#' ~ it.carteira_id) }}</td>
-          <td>{{ it.tipo }}</td>
+          <td>{{ tipo_label(it.tipo) if tipo_label is defined else it.tipo }}</td>
           <td>{{ it.ativo.nome if it.ativo else '-' }}</td>
           <td>{{ it.quantidade or '-' }}</td>
           <td>{{ it.preco_unitario or '-' }}</td>
@@ -113,8 +142,8 @@
           <td>
             {% if it.operacao_financeira_id %}
               <span title="Operação #{{ it.operacao_financeira_id }}{% if it.id_correlacao %} | {{ it.id_correlacao }}{% endif %}" style="color:#4ade80; font-size:12px;">Integrado #{{ it.operacao_financeira_id }}</span>
-            {% elif it.tipo in ['APORTE','RESGATE'] %}
-              <span class="text-muted" style="font-size:12px;">não integrado</span>
+            {% elif it.tipo in ['APORTE','RESGATE','APORTE_CAIXA','RETIRADA_CAIXA'] %}
+              <span class="text-muted" style="font-size:12px;">caixa não integrado</span>
             {% else %}
               <span class="text-muted" style="font-size:12px;">-</span>
             {% endif %}
@@ -127,4 +156,57 @@
     </table>
   </div>
 </div>
+
+<script>
+(function() {
+  var tipo = document.getElementById('tipo-mov');
+  var ajuda = document.getElementById('tipo-ajuda');
+  var grpIntegrar = document.getElementById('grp-integracao');
+  var chk = document.getElementById('chk-integrar');
+  var tituloInt = document.getElementById('integrar-titulo');
+  var ajudaInt = document.getElementById('integrar-ajuda');
+  var lblConta = document.getElementById('lbl-conta-ext');
+  var ativoObrig = document.getElementById('ativo-obrig');
+  function isCash(t){ return t === 'APORTE_CAIXA' || t === 'RETIRADA_CAIXA'; }
+  function isAssetIn(t){ return t === 'APLICACAO' || t === 'COMPRA'; }
+  function isAssetOut(t){ return t === 'RESGATE_ATIVO' || t === 'VENDA'; }
+  function isAsset(t){ return isAssetIn(t) || isAssetOut(t); }
+  function update(){
+    var t = tipo.value;
+    if (isCash(t)) {
+      ajuda.textContent = t === 'APORTE_CAIXA'
+        ? 'Entrada de recursos na carteira (ex.: transferência da conta bancária para a corretora).'
+        : 'Saída de recursos da carteira para conta externa (saque/resgate para o banco).';
+      grpIntegrar.style.display = '';
+      ativoObrig.textContent = '(não se aplica a caixa)';
+      tituloInt.textContent = 'Integrar com financeiro (transferência tipo 4)';
+      ajudaInt.textContent = t === 'APORTE_CAIXA'
+        ? 'Cria transferência da conta externa para a conta financeira vinculada da carteira.'
+        : 'Cria transferência da conta financeira vinculada da carteira para a conta externa.';
+      lblConta.textContent = t === 'APORTE_CAIXA' ? 'Conta financeira externa (origem do aporte)' : 'Conta financeira externa (destino da retirada)';
+    } else if (isAsset(t)) {
+      ajuda.textContent = isAssetIn(t)
+        ? 'Consome caixa da carteira para adquirir o ativo, ou financie direto pela conta externa (integração).'
+        : 'Gera caixa na carteira ao liquidar o ativo, ou envie direto para conta externa (integração).';
+      grpIntegrar.style.display = '';
+      ativoObrig.textContent = '(obrigatório)';
+      if (isAssetIn(t)) {
+        tituloInt.textContent = 'Financiar direto pela conta externa (integração)';
+        ajudaInt.textContent = 'Se marcado, cria transferência da conta externa para a conta vinculada da carteira neste fluxo (aplicação direta, sem aporte em caixa separado). Se desmarcado, a aplicação consome o caixa da carteira.';
+        lblConta.textContent = 'Conta financeira externa (origem dos recursos)';
+      } else {
+        tituloInt.textContent = 'Enviar recursos direto para conta externa (integração)';
+        ajudaInt.textContent = 'Se marcado, cria transferência da conta vinculada da carteira para a conta externa neste fluxo. Se desmarcado, o valor fica no caixa da carteira.';
+        lblConta.textContent = 'Conta financeira externa (destino dos recursos)';
+      }
+    } else {
+      ajuda.textContent = 'Ajuste de registro/posição conforme necessário.';
+      grpIntegrar.style.display = 'none';
+      ativoObrig.textContent = '(opcional)';
+      if (chk) chk.checked = false;
+    }
+  }
+  if (tipo) { tipo.addEventListener('change', update); update(); }
+})();
+</script>
 {% endblock %}

@@ -6,7 +6,7 @@
 <div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
   <div>
     <h1>Carteiras</h1>
-    <p>Carteiras/custódias de investimento. Vincule uma conta financeira para integrar aportes e resgates.</p>
+    <p>Carteiras/custódias de investimento. Vincule uma conta financeira para integrar movimentações de caixa (aporte/retirada) e operações diretas com o financeiro.</p>
   </div>
   <div class="flex gap-2" style="flex-wrap:wrap;">
     <a class="btn btn-secondary" href="/investimentos/instituicoes">Instituições</a>
@@ -62,7 +62,7 @@
   </div>
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>ID</th><th>Nome</th><th>Instituição</th><th>Conta financeira vinculada</th><th>Moeda base</th><th>Integração</th></tr></thead>
+      <thead><tr><th>ID</th><th>Nome</th><th>Instituição</th><th>Conta financeira vinculada</th><th>Moeda base</th><th>Saldo caixa</th><th>Integração</th></tr></thead>
       <tbody>
       {% for it in itens %}
         <tr>
@@ -71,10 +71,11 @@
           <td>{{ it.instituicao.nome if it.instituicao else '-' }}</td>
           <td>{% if it.conta_financeira_id %}{{ contas_map.get(it.conta_financeira_id, '#' ~ it.conta_financeira_id) }}{% else %}<span class="text-muted">-</span>{% endif %}</td>
           <td>{% if it.moeda_base_id %}{{ moedas_map.get(it.moeda_base_id, '#' ~ it.moeda_base_id) }}{% else %}<span class="text-muted">padrão</span>{% endif %}</td>
-          <td>{% if it.conta_financeira_id %}<span style="color:#4ade80; font-size:12px;">Pronta p/ aportes/resgates</span>{% else %}<span class="text-muted" style="font-size:12px;">Sem vínculo</span>{% endif %}</td>
+          <td class="font-bold">{{ saldos_caixa.get(it.id, 0) if saldos_caixa is defined else '-' }}</td>
+          <td>{% if it.conta_financeira_id %}<span style="color:#4ade80; font-size:12px;">Pronta p/ integração</span>{% else %}<span class="text-muted" style="font-size:12px;">Sem vínculo</span>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="6" class="text-muted text-center" style="padding:24px;">Nenhuma carteira cadastrada. Crie uma carteira e, se desejar integrar aportes/resgates, vincule uma conta financeira.</td></tr>
+        <tr><td colspan="7" class="text-muted text-center" style="padding:24px;">Nenhuma carteira cadastrada. Crie uma carteira e, se desejar integrar aportes/retiradas, vincule uma conta financeira.</td></tr>
       {% endfor %}
       </tbody>
     </table>

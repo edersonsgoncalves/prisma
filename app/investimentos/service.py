@@ -125,10 +125,75 @@ def atualizar_cambio_brasilapi(db: Session, moeda_abrev: str, data_referencia: d
 
 # ── Integração financeira (esqueleto/contrato) ───────────────────────────────
 
+# ── Tipos e semântica de movimentação ───────────────────────────────────────
+# Caixa/fronteira (impacta caixa da carteira e pode integrar com financeiro):
+TIPOS_CAIXA_ENTRADA = {"APORTE_CAIXA", "APORTE"}  # APORTE = legado
+TIPOS_CAIXA_SAIDA = {"RETIRADA_CAIXA", "RESGATE"}  # RESGATE = legado (retirada para conta externa)
+# Operações em ativo (impactam posição e caixa da carteira):
+TIPOS_ATIVO_ENTRADA = {"APLICACAO", "COMPRA", "APORTE_ATIVO"}  # aplicação/compra (consome caixa)
+TIPOS_ATIVO_SAIDA = {"RESGATE_ATIVO", "VENDA", "VENCIMENTO"}  # resgate/venda/vencimento (gera caixa)
+TIPOS_AJUSTE = {"AJUSTE"}
+
+TIPOS_INTEGRACAO_CAIXA = TIPOS_CAIXA_ENTRADA | TIPOS_CAIXA_SAIDA
+TIPOS_ATIVO = TIPOS_ATIVO_ENTRADA | TIPOS_ATIVO_SAIDA
+
+
+def tipo_label(tipo: Optional[str]) -> str:
+    t = (tipo or "").upper()
+    labels = {
+        "APORTE_CAIXA": "Aporte de caixa (carteira)",
+        "APORTE": "Aporte de caixa (legado)",
+        "RETIRADA_CAIXA": "Retirada de caixa para conta externa",
+        "RESGATE": "Retirada de caixa (legado)",
+        "APLICACAO": "Aplicação em ativo",
+        "COMPRA": "Compra de ativo",
+        "APORTE_ATIVO": "Aplicação em ativo",
+        "RESGATE_ATIVO": "Resgate de ativo",
+        "VENDA": "Venda de ativo",
+        "VENCIMENTO": "Vencimento de ativo",
+        "AJUSTE": "Ajuste",
+    }
+    return labels.get(t, t or "-")
+
+
+def calcular_saldo_caixa_carteira(db: Session, carteira_id: int) -> Decimal:
+    """Saldo de caixa explícito (derivado) da carteira.
+
+    Regras:
+    - Aporte de caixa: +valor (entrada na carteira).
+    - Retirada de caixa: -valor (saída da carteira).
+    - Aplicação/compra de ativo: -valor (consome caixa da carteira), exceto quando financiada
+      diretamente pela conta externa (integração financeira) — nesse caso o efeito líquido no caixa é nulo.
+    - Resgate/venda/vencimento de ativo: +valor (gera caixa na carteira), exceto quando enviado
+      diretamente para conta externa (integração financeira) — efeito líquido nulo no caixa.
+    - Ajuste: sem efeito automático no caixa por padrão.
+    """
+    movs = db.query(InvestMovimentacao).filter(InvestMovimentacao.carteira_id == carteira_id).all()
+    saldo = Decimal("0")
+    for m in movs:
+        t = (m.tipo or "").upper()
+        val = Decimal(str(m.valor_liquido or m.valor_bruto or 0))
+        integrado = bool(m.operacao_financeira_id)
+        if t in TIPOS_CAIXA_ENTRADA:
+            saldo += val
+        elif t in TIPOS_CAIXA_SAIDA:
+            saldo -= val
+        elif t in TIPOS_ATIVO_ENTRADA:
+            # consome caixa, salvo se financiado direto externamente (fluxo único)
+            if not integrado:
+                saldo -= val
+        elif t in TIPOS_ATIVO_SAIDA:
+            # gera caixa, salvo se enviado direto externamente
+            if not integrado:
+                saldo += val
+        # AJUSTE: sem efeito automático no caixa
+    return saldo
+
+
 class IntegracaoFinanceiraService:
     """Integração entre investimentos e finanças pessoais.
 
-    Aportes/resgates como transferências de caixa (Operacao tipo 4), idempotentes e rastreáveis.
+    Fronteira de caixa como transferências (Operacao tipo 4), idempotentes e rastreáveis.
     """
 
     @staticmethod
@@ -174,17 +239,25 @@ class IntegracaoFinanceiraService:
         return op_saida
 
     @staticmethod
-    def integrar_movimentacao_caixa(db: Session, mov: InvestMovimentacao, conta_externa_id: int, efetivado: int = 1) -> dict:
-        """Cria transferência financeira idempotente para APORTE/RESGATE em caixa."""
+    def integrar_transferencia_caixa(db: Session, mov: InvestMovimentacao, conta_externa_id: int, efetivado: int = 1, sentido: Optional[str] = None) -> dict:
+        """Cria transferência financeira idempotente para entrada/saída de caixa da carteira.
+
+        sentido: 'ENTRADA' (externa -> carteira) ou 'SAIDA' (carteira -> externa). Se None, inferido do tipo.
+        """
         tipo = (mov.tipo or "").upper()
-        if tipo not in ("APORTE", "RESGATE"):
-            return {"ok": False, "erro": "Tipo de movimentação não elegível para integração de caixa."}
+        if sentido is None:
+            if tipo in TIPOS_CAIXA_ENTRADA or tipo in TIPOS_ATIVO_ENTRADA:
+                sentido = "ENTRADA"
+            elif tipo in TIPOS_CAIXA_SAIDA or tipo in TIPOS_ATIVO_SAIDA:
+                sentido = "SAIDA"
+            else:
+                return {"ok": False, "erro": "Tipo de movimentação não elegível para integração financeira."}
 
         carteira = db.query(InvestCarteira).filter(InvestCarteira.id == mov.carteira_id).first()
         if not carteira or not carteira.conta_financeira_id:
-            return {"ok": False, "erro": "Carteira sem conta financeira vinculada."}
-        if conta_externa_id == carteira.conta_financeira_id:
-            return {"ok": False, "erro": "Conta externa deve ser diferente da conta financeira da carteira."}
+            return {"ok": False, "erro": "Carteira sem conta financeira vinculada para integração."}
+        if int(conta_externa_id) == int(carteira.conta_financeira_id):
+            return {"ok": False, "erro": "Conta externa é a mesma da carteira; transferência tipo 4 não se aplica. Use uma conta externa diferente ou registre sem integração financeira automática."}
 
         if not mov.id_correlacao:
             mov.id_correlacao = f"INV-{tipo}-{uuid.uuid4().hex[:12]}"
@@ -198,14 +271,20 @@ class IntegracaoFinanceiraService:
         if valor <= 0:
             return {"ok": False, "erro": "Valor inválido para integração."}
 
-        if tipo == "APORTE":
-            conta_origem_id = conta_externa_id
-            conta_destino_id = carteira.conta_financeira_id
-            descricao = f"Aporte investimento - {carteira.nome}"
-        else:  # RESGATE
-            conta_origem_id = carteira.conta_financeira_id
-            conta_destino_id = conta_externa_id
-            descricao = f"Resgate investimento - {carteira.nome}"
+        if sentido == "ENTRADA":
+            conta_origem_id = int(conta_externa_id)
+            conta_destino_id = int(carteira.conta_financeira_id)
+            if tipo in TIPOS_ATIVO_ENTRADA:
+                descricao = f"Aplicação investimento (direto) - {carteira.nome}"
+            else:
+                descricao = f"Aporte investimento - {carteira.nome}"
+        else:  # SAIDA
+            conta_origem_id = int(carteira.conta_financeira_id)
+            conta_destino_id = int(conta_externa_id)
+            if tipo in TIPOS_ATIVO_SAIDA:
+                descricao = f"Resgate de ativo (direto) - {carteira.nome}"
+            else:
+                descricao = f"Retirada investimento - {carteira.nome}"
 
         grupo_id = f"INVTRF-{uuid.uuid4().hex[:10]}"
         op_saida = IntegracaoFinanceiraService._criar_transferencia(
@@ -258,20 +337,38 @@ def registrar_movimentacao(
     conta_externa_id: Optional[int] = None,
     efetivado: int = 1,
 ) -> tuple[InvestMovimentacao, Optional[dict]]:
-    """Registra movimentação, atualiza posição/lotes e (opcionalmente) integra aporte/resgate com o financeiro."""
+    """Registra movimentação separando caixa/fronteira e operação em ativo.
+
+    - APORTE_CAIXA/RETIRADA_CAIXA (e legados APORTE/RESGATE): movimentam caixa da carteira e podem integrar
+      com financeiro (transferência tipo 4 entre conta externa e conta vinculada da carteira).
+    - APLICACAO/COMPRA: consomem caixa da carteira e aumentam posição no ativo. Podem ser financiadas
+      diretamente pela conta externa (integração cria transferência externa->carteira para este fluxo).
+    - RESGATE_ATIVO/VENDA/VENCIMENTO: reduzem posição e geram caixa na carteira. Podem, opcionalmente,
+      enviar recursos direto para conta externa (integração carteira->externa).
+    """
     tipo_u = (tipo or "").upper()
+    # normalizações de legados/aliases para consistência interna de UI
+    if tipo_u == "APORTE":
+        tipo_u = "APORTE_CAIXA"
+    elif tipo_u == "RESGATE":
+        tipo_u = "RETIRADA_CAIXA"
+
     qtd = _to_decimal(quantidade)
     pu = _to_decimal(preco_unitario)
     bruto = _to_decimal(valor_bruto)
     custos = _to_decimal(taxas_custos)
     if bruto == 0 and qtd != 0 and pu != 0:
         bruto = (qtd * pu).quantize(Decimal("0.01"))
-    if tipo_u in ("VENDA", "RESGATE", "RESGATE_ATIVO"):
+
+    # Valor líquido: saídas de valor (venda/resgate de ativo, retirada de caixa) líquidas de custos;
+    # entradas/aplicações consideram custo total (valor + custos) quando aplicável.
+    if tipo_u in TIPOS_ATIVO_SAIDA or tipo_u in TIPOS_CAIXA_SAIDA:
         liquido = (bruto - custos) if bruto != 0 else bruto
     else:
         liquido = (bruto + custos) if bruto != 0 else bruto
     if liquido == 0:
         liquido = bruto
+
     valor_brl = None
     if taxa_cambio is not None:
         try:
@@ -279,22 +376,42 @@ def registrar_movimentacao(
         except Exception:
             valor_brl = None
 
-    # validação antecipada de integração
-    integracao_result = None
-    if integrar_financeiro and tipo_u in ("APORTE", "RESGATE"):
-        carteira = db.query(InvestCarteira).filter(InvestCarteira.id == carteira_id).first()
-        if not carteira:
-            raise ValueError("Carteira não encontrada.")
-        if not carteira.conta_financeira_id:
-            raise ValueError("Carteira sem conta financeira vinculada para integração.")
-        if not conta_externa_id:
-            raise ValueError("Selecione a conta financeira externa para integrar o aporte/resgate.")
-        if int(conta_externa_id) == int(carteira.conta_financeira_id):
-            raise ValueError("Conta externa deve ser diferente da conta financeira da carteira.")
+    carteira = db.query(InvestCarteira).filter(InvestCarteira.id == carteira_id).first()
+    if not carteira:
+        raise ValueError("Carteira não encontrada.")
+
+    # Validações de domínio
+    if tipo_u in TIPOS_ATIVO and not ativo_id:
+        raise ValueError("Selecione o ativo/produto para operações de aplicação/compra ou resgate/venda.")
+    if tipo_u in TIPOS_ATIVO and _to_decimal(qtd) == 0:
+        raise ValueError("Informe a quantidade para operações em ativo.")
+
+    if tipo_u in TIPOS_CAIXA_ENTRADA | TIPOS_CAIXA_SAIDA:
         if _to_decimal(liquido) <= 0 and _to_decimal(bruto) > 0:
             liquido = bruto
         if _to_decimal(liquido) <= 0:
-            raise ValueError("Informe um valor válido para integrar o aporte/resgate.")
+            raise ValueError("Informe um valor válido para movimentação de caixa.")
+    if tipo_u in TIPOS_ATIVO and _to_decimal(liquido) <= 0 and _to_decimal(bruto) > 0:
+        liquido = bruto
+
+    integracao_result = None
+    sentido_integracao = None
+    # Integração financeira: caixa (fronteira) ou operações em ativo financiadas/dirigidas direto pela conta externa
+    if integrar_financeiro:
+        if not conta_externa_id:
+            raise ValueError("Selecione a conta financeira externa para integração.")
+        if not carteira.conta_financeira_id:
+            raise ValueError("Carteira sem conta financeira vinculada para integração.")
+        if int(conta_externa_id) == int(carteira.conta_financeira_id):
+            raise ValueError("Conta externa é a mesma da conta vinculada da carteira. Para esse caso (conta integrada), registre sem transferência automática ou ajuste o vínculo/fluxo.")
+        if tipo_u in TIPOS_CAIXA_ENTRADA or tipo_u in TIPOS_ATIVO_ENTRADA:
+            sentido_integracao = "ENTRADA"  # externa -> carteira (aporte ou financiamento direto da aplicação)
+        elif tipo_u in TIPOS_CAIXA_SAIDA or tipo_u in TIPOS_ATIVO_SAIDA:
+            sentido_integracao = "SAIDA"  # carteira -> externa (retirada ou resgate direto)
+        else:
+            raise ValueError("Tipo de movimentação não elegível para integração financeira.")
+        if _to_decimal(liquido) <= 0:
+            raise ValueError("Informe um valor válido para integrar com o financeiro.")
 
     mov = InvestMovimentacao(
         carteira_id=carteira_id,
@@ -318,9 +435,9 @@ def registrar_movimentacao(
     db.flush()
 
     # Atualização de posição/lotes para operações com ativo e quantidade
-    if ativo_id and qtd != 0 and tipo_u in ("COMPRA", "APLICACAO", "APORTE_ATIVO", "VENDA", "RESGATE_ATIVO"):
+    if ativo_id and qtd != 0 and tipo_u in TIPOS_ATIVO:
         pos = obter_ou_criar_posicao(db, carteira_id, ativo_id)
-        if tipo_u in ("COMPRA", "APLICACAO", "APORTE_ATIVO"):
+        if tipo_u in TIPOS_ATIVO_ENTRADA:
             novo_custo = liquido if liquido != 0 else bruto
             novo_custo_brl = valor_brl if valor_brl is not None else Decimal("0")
             pos.quantidade = (Decimal(str(pos.quantidade or 0)) + qtd)
@@ -341,7 +458,7 @@ def registrar_movimentacao(
                 corretora_id=corretora_id,
             )
             db.add(lote)
-        elif tipo_u in ("VENDA", "RESGATE_ATIVO"):
+        elif tipo_u in TIPOS_ATIVO_SAIDA:
             pos.quantidade = (Decimal(str(pos.quantidade or 0)) - qtd)
             custo_saida = (Decimal(str(pos.preco_medio or 0)) * qtd)
             pos.custo_total = (Decimal(str(pos.custo_total or 0)) - custo_saida)
@@ -360,13 +477,12 @@ def registrar_movimentacao(
                 restante -= baixa
         db.add(pos)
 
-    # Integração financeira (aportes/resgates em caixa)
-    if integrar_financeiro and tipo_u in ("APORTE", "RESGATE") and conta_externa_id:
-        # garante valor líquido para transferência
+    # Integração financeira (transferência de fronteira)
+    if integrar_financeiro and conta_externa_id and sentido_integracao:
         if _to_decimal(mov.valor_liquido) <= 0 and _to_decimal(mov.valor_bruto) > 0:
             mov.valor_liquido = mov.valor_bruto
-        integracao_result = IntegracaoFinanceiraService.integrar_movimentacao_caixa(
-            db, mov, int(conta_externa_id), efetivado=1 if efetivado else 0
+        integracao_result = IntegracaoFinanceiraService.integrar_transferencia_caixa(
+            db, mov, int(conta_externa_id), efetivado=1 if efetivado else 0, sentido=sentido_integracao
         )
         if not integracao_result.get("ok"):
             db.rollback()

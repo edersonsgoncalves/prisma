@@ -46,8 +46,8 @@
   <ul style="margin:0; padding-left:18px; line-height:1.7;">
     <li><b>Cadastros:</b> instituições, carteiras e ativos/produtos (RF, caixinhas, RV, FI/FII) com moeda/indexador.</li>
     <li><b>Multi-moeda:</b> reuso de <code>contas_moedas</code> e histórico de câmbio (<code>invest_taxas_cambio</code>) via BrasilAPI com fallback manual.</li>
-    <li><b>Movimentações/posições:</b> registro com atualização de posição, preço médio e lotes (FIFO simplificado).</li>
-    <li><b>Integração financeira:</b> aportes/resgates em caixa podem gerar transferência idempotente (tipo 4) entre conta externa e conta vinculada da carteira.</li>
+    <li><b>Movimentações/posições:</b> separação entre caixa da carteira (aporte/retirada) e operações em ativos (aplicação/compra, resgate/venda/vencimento), com atualização de posição, preço médio, lotes e saldo de caixa.</li>
+    <li><b>Integração financeira:</b> movimentações de caixa e operações em ativo financiadas/enviadas direto à conta externa podem gerar transferência idempotente (tipo 4) entre conta externa e conta vinculada da carteira.</li>
   </ul>
   <p class="text-muted" style="margin-top:12px; font-size:12px;">Migração de tabelas: <code>python scripts/migrate_investimentos.py</code>. Indexadores padrão (CDI/Selic/IPCA): <code>python scripts/seed_invest_indexadores.py</code>.</p>
 </div>
