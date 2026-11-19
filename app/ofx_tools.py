@@ -262,6 +262,49 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _conta_elegivel_para_transferencia(conta: ContaBancaria, memo: str) -> bool:
+    """Define se a conta pode ser sugerida como contraparte de transferência bancária/PIX."""
+    # Evita sugerir cartão de crédito como contraparte de transferência comum (ex.: Pix/TED/DOC)
+    if int(getattr(conta, "tipo_conta", 0) or 0) == 4:
+        return False
+    return True
+
+
+def _extrair_nome_conta_do_memo(memo: str, conta: ContaBancaria) -> tuple[int, Optional[str]]:
+    """Retorna (score, motivo) se o nome da conta aparece como pista no texto do lançamento."""
+    memo_norm = _normalizar_texto_memo(memo)
+    nome_norm = _normalizar_texto_memo(getattr(conta, "nome_conta", "") or "")
+    if not memo_norm or not nome_norm:
+        return 0, None
+
+    # ignora nomes muito curtos/genéricos para evitar falsos positivos
+    if len(nome_norm) < 3:
+        return 0, None
+
+    memo_tokens = f" {memo_norm} "
+    nome_tokens = f" {nome_norm} "
+    motivo = None
+    score = 0
+
+    # match exato do nome da conta dentro do memo (tokens/frase)
+    if nome_tokens in memo_tokens:
+        score = 100
+        motivo = f"nome da conta identificado no lançamento ({conta.nome_conta})"
+    else:
+        # fallback: todas as palavras relevantes do nome presentes no memo
+        partes = [p for p in nome_norm.split() if len(p) >= 3]
+        if len(partes) >= 2 and all(f" {p} " in memo_tokens for p in partes):
+            score = 85
+            motivo = f"nome da conta identificado no lançamento ({conta.nome_conta})"
+
+    # reforço quando o memo indica transferência/pix/ted/doc
+    if score > 0:
+        termos_transfer = ("pix", "transfer", "ted", "doc", "transf")
+        if any(t in memo_norm for t in termos_transfer):
+            score += 10
+    return score, motivo
+
+
 def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melhor_match: Optional[Operacao]) -> Optional[dict]:
     """Sugere classificação como transferência quando há contraparte plausível em outra conta."""
     # Se já há match forte de duplicidade/concorrência exata na mesma conta, evita sugerir transferência
@@ -272,6 +315,43 @@ def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melh
     if v_ofx <= 0:
         return None
 
+    memo = ofx.get("memo", "") or ""
+    memo_norm = _normalizar_texto_memo(memo)
+    indica_transfer = any(t in memo_norm for t in ("pix", "transfer", "ted", "doc", "transf"))
+
+    contas_raw = db.query(ContaBancaria).all()
+    contas = [c for c in contas_raw if hasattr(c, "conta_id") and hasattr(c, "nome_conta")]
+    contas_por_id = {c.conta_id: c for c in contas}
+
+    # Contas candidatas por elegibilidade/contexto
+    contas_candidatas = []
+    for c in contas:
+        if conta_id and c.conta_id == conta_id:
+            continue
+        if not _conta_elegivel_para_transferencia(c, memo):
+            continue
+        contas_candidatas.append(c)
+    contas_candidatas_ids = {c.conta_id for c in contas_candidatas}
+
+    melhor_sugestao = None  # (score, conta_destino, operacao_contraparte_id, motivo)
+
+    # 1) Pista forte pelo nome da conta no texto do lançamento (mesmo sem contraparte existente)
+    for c in contas_candidatas:
+        score_nome, motivo_nome = _extrair_nome_conta_do_memo(memo, c)
+        if not motivo_nome:
+            continue
+        # nome identificado é um sinal forte; transferência explícita reforça
+        score = score_nome
+        if indica_transfer:
+            score = max(score, 110)
+        cand = (score, c.conta_id, None, motivo_nome)
+        if not melhor_sugestao or cand[0] > melhor_sugestao[0]:
+            melhor_sugestao = cand
+
+    # Se a conta do extrato for cartão e o memo indica pix/transfer bancária, não forçar sugestão de cartão
+    # (já filtrado por elegibilidade; manter regra explícita para clareza)
+
+    # 2) Contraparte operacional existente em outra conta (valor/data/sinal)
     data_ref = ofx["data"]
     data_min = data_ref - timedelta(days=3)
     data_max = data_ref + timedelta(days=3)
@@ -292,12 +372,20 @@ def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melh
     if conta_id:
         q = q.filter(Operacao.operacoes_conta != conta_id)
 
-    candidatos = q.all()
-    melhor = None
-    melhor_score = -1
-    melhor_motivo = ""
+    # Se temos informações de contas, restringe a contrapartes elegíveis (ex.: exclui cartão de crédito)
+    if contas:
+        if contas_candidatas_ids:
+            q = q.filter(Operacao.operacoes_conta.in_(list(contas_candidatas_ids)))
+        else:
+            candidatos = []
+            q = None
+    candidatos = q.all() if q is not None else []
 
     for op in candidatos:
+        conta_op = contas_por_id.get(op.operacoes_conta)
+        if contas and (not conta_op or not _conta_elegivel_para_transferencia(conta_op, memo)):
+            continue
+
         v_db = abs(float(op.operacoes_valor or 0))
         diff_valor = abs(v_db - v_ofx)
         if diff_valor > 0.05:
@@ -324,26 +412,41 @@ def _sugerir_transferencia(ofx: dict, db: Session, conta_id: Optional[int], melh
         if int(op.operacoes_tipo or 0) == 4:
             score += 10
             motivo_partes.append("contraparte já é transferência")
-        ratio = _similaridade_memo(ofx.get("memo", ""), op.operacoes_descricao or "")
+        ratio = _similaridade_memo(memo, op.operacoes_descricao or "")
         if ratio >= 0.7:
             score += 10
             motivo_partes.append("descrição semelhante")
 
-        if score > melhor_score:
-            melhor_score = score
-            melhor = op
-            melhor_motivo = ", ".join(motivo_partes)
+        # reforço por pista de nome da conta no memo (ex.: "Heracles")
+        score_nome, motivo_nome = _extrair_nome_conta_do_memo(memo, conta_op)
+        if motivo_nome:
+            score += 40
+            motivo_partes.append(motivo_nome)
 
-    # limiar para sugerir
-    if not melhor or melhor_score < 70:
+        if indica_transfer and score_nome > 0:
+            score += 10
+
+        cand = (score, op.operacoes_conta, op.operacoes_id, ", ".join(motivo_partes) or "contraparte compatível encontrada em outra conta")
+        if not melhor_sugestao or cand[0] > melhor_sugestao[0]:
+            melhor_sugestao = cand
+
+    if not melhor_sugestao:
         return None
 
-    conta_contraparte = melhor.operacoes_conta
+    score, conta_destino, op_contraparte_id, motivo = melhor_sugestao
+
+    # limiar: nome identificado no memo pode sugerir mesmo sem contraparte operacional
+    limiar = 70
+    if op_contraparte_id is None:
+        limiar = 90 if indica_transfer or "nome da conta identificado" in (motivo or "") else 100
+    if score < limiar:
+        return None
+
     return {
-        "conta_destino": conta_contraparte,
-        "operacao_contraparte_id": melhor.operacoes_id,
-        "motivo": melhor_motivo or "contraparte compatível encontrada em outra conta",
-        "score": melhor_score,
+        "conta_destino": conta_destino,
+        "operacao_contraparte_id": op_contraparte_id,
+        "motivo": motivo or "contraparte compatível encontrada em outra conta",
+        "score": score,
     }
 
 TRNTYPE_MAP = {

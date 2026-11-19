@@ -57,11 +57,23 @@ class FakeQuery:
 
 
 class FakeDB:
-    def __init__(self, items):
-        self.items = items
+    def __init__(self, operacoes=None, contas=None):
+        # compat: FakeDB([ops]) => operacoes
+        if contas is None and operacoes is not None and not isinstance(operacoes, dict):
+            self.operacoes = operacoes
+            self.contas = []
+        elif isinstance(operacoes, dict):
+            self.operacoes = operacoes.get("operacoes", [])
+            self.contas = operacoes.get("contas", [])
+        else:
+            self.operacoes = operacoes or []
+            self.contas = contas or []
 
     def query(self, model):
-        return FakeQuery(self.items)
+        name = getattr(model, "__name__", "")
+        if name == "ContaBancaria":
+            return FakeQuery(self.contas)
+        return FakeQuery(self.operacoes)
 
 
 # --- Normalização de memo ---
@@ -178,3 +190,45 @@ def test_nao_sugere_transferencia_sem_contraparte_plausivel():
     db = FakeDB([contraparte_distante])
     sugestao = _sugerir_transferencia(ofx, db, conta_id=10, melhor_match=None)
     assert sugestao is None
+
+
+def make_conta(conta_id, nome, tipo_conta=1):
+    return SimpleNamespace(conta_id=conta_id, nome_conta=nome, tipo_conta=tipo_conta)
+
+
+def test_sugere_transferencia_por_nome_da_conta_no_memo_mesmo_sem_contraparte():
+    ofx = make_ofx(tipo="C", valor=350.00, data=date(2026, 5, 10), memo="Transferência recebida pelo Pix - Heracles R")
+    conta_origem = make_conta(10, "Conta Corrente", 1)
+    conta_heracles = make_conta(20, "Heracles", 1)
+    conta_cartao = make_conta(30, "Cartão Crédito", 4)
+    db = FakeDB(operacoes=[], contas=[conta_origem, conta_heracles, conta_cartao])
+    sugestao = _sugerir_transferencia(ofx, db, conta_id=10, melhor_match=None)
+    assert sugestao is not None
+    assert sugestao["conta_destino"] == 20
+    assert sugestao["operacao_contraparte_id"] is None
+    assert "Heracles" in (sugestao.get("motivo") or "")
+
+
+def test_nao_sugere_transferencia_para_conta_cartao_credito_quando_memo_indica_pix():
+    ofx = make_ofx(tipo="C", valor=350.00, data=date(2026, 5, 10), memo="Transferência recebida pelo Pix - Fulano")
+    conta_origem = make_conta(10, "Conta Corrente", 1)
+    conta_cartao = make_conta(30, "Fulano", 4)
+    db = FakeDB(operacoes=[], contas=[conta_origem, conta_cartao])
+    sugestao = _sugerir_transferencia(ofx, db, conta_id=10, melhor_match=None)
+    assert sugestao is None
+
+
+def test_sugestao_por_contraparte_ignora_conta_cartao_e_pode_usar_nome_no_memo():
+    ofx = make_ofx(tipo="C", valor=350.00, data=date(2026, 5, 10), memo="Transferência recebida pelo Pix - Heracles R")
+    conta_origem = make_conta(10, "Conta Corrente", 1)
+    conta_heracles = make_conta(20, "Heracles", 1)
+    conta_cartao = make_conta(30, "Cartão", 4)
+    contraparte_cartao = make_op(operacoes_id=50, operacoes_conta=30, operacoes_valor=-350.00, operacoes_tipo=4,
+                                 operacoes_data_lancamento=date(2026, 5, 10), operacoes_descricao="PAGTO CARTAO")
+    contraparte_heracles = make_op(operacoes_id=51, operacoes_conta=20, operacoes_valor=-350.00, operacoes_tipo=4,
+                                   operacoes_data_lancamento=date(2026, 5, 10), operacoes_descricao="PIX ENVIADO")
+    db = FakeDB(operacoes=[contraparte_cartao, contraparte_heracles], contas=[conta_origem, conta_heracles, conta_cartao])
+    sugestao = _sugerir_transferencia(ofx, db, conta_id=10, melhor_match=None)
+    assert sugestao is not None
+    assert sugestao["conta_destino"] == 20
+    assert sugestao["operacao_contraparte_id"] in (None, 51)
