@@ -20,7 +20,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Verifica se já existe um PR aberto de dev para main
+          git fetch origin main dev
+          AHEAD=$(git rev-list --count origin/main..origin/dev)
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "Nenhum commit novo em dev à frente de main. Nada a fazer."
+            exit 0
+          fi
+
           PR_NUMBER=$(gh pr list --base main --head dev --state open --json number -q '.[0].number')
 
           if [ -z "$PR_NUMBER" ]; then
@@ -35,5 +41,4 @@ jobs:
             echo "PR #$PR_NUMBER já está aberto. Atualizando..."
           fi
 
-          # Ativa o auto-merge (só executa o merge quando todos os checks obrigatórios passarem)
           gh pr merge "$PR_NUMBER" --auto --merge
