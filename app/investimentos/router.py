@@ -233,15 +233,17 @@ async def cambio_manual(
 # ── Movimentações e posições (base Fase 2) ──────────────────────────────────
 
 @router.get("/movimentacoes", response_class=HTMLResponse)
-async def listar_movimentacoes(request: Request, sessao=Depends(require_login), db: Session = Depends(get_db)):
+async def listar_movimentacoes(request: Request, msg: Optional[str] = Query(None), erro: Optional[str] = Query(None), sessao=Depends(require_login), db: Session = Depends(get_db)):
     itens = db.query(InvestMovimentacao).order_by(InvestMovimentacao.data_negociacao.desc(), InvestMovimentacao.id.desc()).limit(200).all()
     carteiras = db.query(InvestCarteira).filter(InvestCarteira.ativo == 1).order_by(InvestCarteira.nome).all()
     ativos = db.query(InvestAtivo).filter(InvestAtivo.ativo == 1).order_by(InvestAtivo.nome).all()
     instituicoes = db.query(InvestInstituicao).filter(InvestInstituicao.ativo == 1).order_by(InvestInstituicao.nome).all()
     moedas = service.listar_moedas(db)
+    contas = db.query(ContaBancaria).order_by(ContaBancaria.nome_conta).all()
     return templates.TemplateResponse("investimentos/movimentacoes.html", {
         "request": request, "sessao": sessao, "itens": itens,
-        "carteiras": carteiras, "ativos": ativos, "instituicoes": instituicoes, "moedas": moedas,
+        "carteiras": carteiras, "ativos": ativos, "instituicoes": instituicoes, "moedas": moedas, "contas": contas,
+        "msg": msg, "erro": erro,
     })
 
 
@@ -260,34 +262,48 @@ async def criar_movimentacao(
     taxa_cambio: Optional[str] = Form(None),
     corretora_id: Optional[int] = Form(None),
     observacoes: Optional[str] = Form(None),
+    integrar_financeiro: Optional[str] = Form(None),
+    conta_externa_id: Optional[int] = Form(None),
+    efetivado: Optional[int] = Form(1),
     sessao=Depends(require_login),
     db: Session = Depends(get_db),
 ):
-    dt = date.fromisoformat(data_negociacao)
-    qtd = _parse_decimal_br(quantidade, "0") if quantidade else None
-    pu = _parse_decimal_br(preco_unitario, "0") if preco_unitario else None
-    bruto = _parse_decimal_br(valor_bruto, "0") if valor_bruto else None
-    custos = _parse_decimal_br(taxas_custos, "0") if taxas_custos else None
-    cambio = _parse_decimal_br(taxa_cambio, "0") if taxa_cambio else None
-    if cambio is not None and cambio == 0:
-        cambio = None
+    try:
+        dt = date.fromisoformat(data_negociacao)
+        qtd = _parse_decimal_br(quantidade, "0") if quantidade else None
+        pu = _parse_decimal_br(preco_unitario, "0") if preco_unitario else None
+        bruto = _parse_decimal_br(valor_bruto, "0") if valor_bruto else None
+        custos = _parse_decimal_br(taxas_custos, "0") if taxas_custos else None
+        cambio = _parse_decimal_br(taxa_cambio, "0") if taxa_cambio else None
+        if cambio is not None and cambio == 0:
+            cambio = None
 
-    service.registrar_movimentacao(
-        db=db,
-        carteira_id=carteira_id,
-        tipo=tipo,
-        data_negociacao=dt,
-        ativo_id=ativo_id or None,
-        quantidade=qtd,
-        preco_unitario=pu,
-        valor_bruto=bruto,
-        taxas_custos=custos,
-        moeda_id=moeda_id or None,
-        taxa_cambio=cambio,
-        corretora_id=corretora_id or None,
-        observacoes=(observacoes or None),
-    )
-    return RedirectResponse(url="/investimentos/movimentacoes", status_code=303)
+        mov, integracao = service.registrar_movimentacao(
+            db=db,
+            carteira_id=carteira_id,
+            tipo=tipo,
+            data_negociacao=dt,
+            ativo_id=ativo_id or None,
+            quantidade=qtd,
+            preco_unitario=pu,
+            valor_bruto=bruto,
+            taxas_custos=custos,
+            moeda_id=moeda_id or None,
+            taxa_cambio=cambio,
+            corretora_id=corretora_id or None,
+            observacoes=(observacoes or None),
+            integrar_financeiro=bool(integrar_financeiro),
+            conta_externa_id=conta_externa_id or None,
+            efetivado=1 if efetivado is None else int(efetivado),
+        )
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/investimentos/movimentacoes?erro={str(e)}", status_code=303)
+
+    msg = "Movimentação registrada"
+    if integracao and integracao.get("ok"):
+        msg += " e integrada ao financeiro (transferência criada)" if not integracao.get("reutilizado") else " (integração financeira já existente)"
+    return RedirectResponse(url=f"/investimentos/movimentacoes?msg={msg}", status_code=303)
 
 
 @router.get("/posicoes", response_class=HTMLResponse)

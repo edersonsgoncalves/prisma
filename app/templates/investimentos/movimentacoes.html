@@ -11,6 +11,9 @@
   <a class="btn btn-ghost" href="/investimentos">Voltar</a>
 </div>
 
+{% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+{% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
+
 <div class="card" style="margin-bottom:16px;">
   <h3 style="margin-top:0;">Nova movimentação</h3>
   <form method="post" action="/investimentos/movimentacoes">
@@ -20,7 +23,7 @@
         <label class="form-label">Carteira *</label>
         <select class="form-control" name="carteira_id" required>
           <option value="">Selecione...</option>
-          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}</option>{% endfor %}
+          {% for c in carteiras %}<option value="{{ c.id }}">{{ c.nome }}{% if c.conta_financeira_id %} (conta fin. #{{ c.conta_financeira_id }}){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div class="form-group">
@@ -30,8 +33,8 @@
           <option value="VENDA">Venda (RV/Fundos)</option>
           <option value="APLICACAO">Aplicação (RF/Caixinha)</option>
           <option value="RESGATE_ATIVO">Resgate/Vencimento (RF/Caixinha)</option>
-          <option value="APORTE">Aporte em caixa (carteira)</option>
-          <option value="RESGATE">Resgate em caixa (carteira)</option>
+          <option value="APORTE">Aporte em caixa (carteira) — integração financeira</option>
+          <option value="RESGATE">Resgate em caixa (carteira) — integração financeira</option>
           <option value="AJUSTE">Ajuste</option>
         </select>
       </div>
@@ -45,7 +48,7 @@
       <div class="form-group"><label class="form-label">Data negociação *</label><input class="form-control" type="date" name="data_negociacao" required></div>
       <div class="form-group"><label class="form-label">Quantidade</label><input class="form-control" name="quantidade" placeholder="0,00"></div>
       <div class="form-group"><label class="form-label">Preço unitário (moeda original)</label><input class="form-control" name="preco_unitario" placeholder="0,00"></div>
-      <div class="form-group"><label class="form-label">Valor bruto (moeda original)</label><input class="form-control" name="valor_bruto" placeholder="0,00"></div>
+      <div class="form-group"><label class="form-label">Valor (bruto/líquido) *</label><input class="form-control" name="valor_bruto" placeholder="0,00 (necessário p/ aporte/resgate)"></div>
       <div class="form-group"><label class="form-label">Taxas/custos</label><input class="form-control" name="taxas_custos" placeholder="0,00"></div>
       <div class="form-group">
         <label class="form-label">Moeda (operação/ativo)</label>
@@ -62,11 +65,32 @@
           {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
         </select>
       </div>
+
+      <div class="form-group" style="grid-column:1/-1; padding:12px; border:1px dashed var(--border, #334155); border-radius:8px;">
+        <label class="flex items-center gap-2" style="cursor:pointer; font-weight:600;">
+          <input type="checkbox" name="integrar_financeiro" value="1"> Integrar com financeiro (criar transferência) — para APORTE/RESGATE
+        </label>
+        <div class="form-grid-2" style="margin-top:10px;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Conta financeira externa (origem no aporte / destino no resgate)</label>
+            <select class="form-control" name="conta_externa_id">
+              <option value="">Selecione...</option>
+              {% for c in contas %}<option value="{{ c.conta_id }}">{{ c.nome_conta }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Efetivar transferência</label>
+            <select class="form-control" name="efetivado"><option value="1" selected>Sim</option><option value="0">Não</option></select>
+          </div>
+        </div>
+        <p class="text-muted" style="font-size:12px; margin:8px 0 0;">A carteira deve ter <b>conta financeira vinculada</b>. A transferência é criada de forma idempotente (referência/correlação) entre a conta externa e a conta vinculada da carteira.</p>
+      </div>
+
       <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observações</label><input class="form-control" name="observacoes"></div>
     </div>
     <button class="btn btn-primary" type="submit">Registrar movimentação</button>
   </form>
-  <p class="text-muted" style="font-size:12px; margin-top:8px;">Base: compra/aplicação cria lote e atualiza preço médio; venda/resgate baixa posição (FIFO simplificado). Integração automática com transferências financeiras será concretizada em etapa seguinte.</p>
+  <p class="text-muted" style="font-size:12px; margin-top:8px;">Compra/aplicação cria lote e atualiza preço médio; venda/resgate baixa posição (FIFO simplificado).</p>
 </div>
 
 <div class="card p-0 overflow-hidden">

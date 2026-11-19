@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -125,51 +126,93 @@ def atualizar_cambio_brasilapi(db: Session, moeda_abrev: str, data_referencia: d
 # ── Integração financeira (esqueleto/contrato) ───────────────────────────────
 
 class IntegracaoFinanceiraService:
-    """Contrato interno para integração entre investimentos e finanças pessoais.
+    """Integração entre investimentos e finanças pessoais.
 
-    Princípios (Fase 0): aportes/resgates como transferências de caixa; módulo de
-    investimentos é fonte de verdade de posições/P&L; operações idempotentes e rastreáveis.
-    Implementação concreta dos lançamentos financeiros deve respeitar convenções do
-    domínio financeiro (tipo/contas/referências) e será evoluída na Fase 1/4.
+    Aportes/resgates como transferências de caixa (Operacao tipo 4), idempotentes e rastreáveis.
     """
 
     @staticmethod
-    def registrar_aporte_transferencia(db: Session, carteira: InvestCarteira, conta_origem_id: int, valor: Decimal, moeda_id: Optional[int], data_mov: date, taxa_cambio: Optional[Decimal] = None, id_correlacao: Optional[str] = None) -> dict:
-        """Esqueleto: valida vínculo e retorna intenção de transferência (aporte)."""
-        if not carteira.conta_financeira_id:
-            return {"ok": False, "erro": "Carteira sem conta financeira vinculada."}
-        # Fase 1: criar operação financeira (transferência) de forma idempotente e vincular
-        return {
-            "ok": True,
-            "acao": "APORTE_TRANSFERENCIA",
-            "conta_origem_id": conta_origem_id,
-            "conta_destino_id": carteira.conta_financeira_id,
-            "valor": str(valor),
-            "moeda_id": moeda_id,
-            "data": data_mov.isoformat(),
-            "taxa_cambio": str(taxa_cambio) if taxa_cambio is not None else None,
-            "id_correlacao": id_correlacao,
-            "implementado": False,
-        }
+    def _buscar_mov_integrada(db: Session, id_correlacao: str, ignorar_mov_id: Optional[int] = None) -> Optional[InvestMovimentacao]:
+        q = db.query(InvestMovimentacao).filter(
+            InvestMovimentacao.id_correlacao == id_correlacao,
+            InvestMovimentacao.operacao_financeira_id.isnot(None),
+        )
+        if ignorar_mov_id:
+            q = q.filter(InvestMovimentacao.id != ignorar_mov_id)
+        return q.first()
 
     @staticmethod
-    def registrar_resgate_transferencia(db: Session, carteira: InvestCarteira, conta_destino_id: int, valor_liquido: Decimal, moeda_id: Optional[int], data_mov: date, taxa_cambio: Optional[Decimal] = None, id_correlacao: Optional[str] = None) -> dict:
-        """Esqueleto: valida vínculo e retorna intenção de transferência (resgate pelo valor líquido)."""
-        if not carteira.conta_financeira_id:
+    def _criar_transferencia(db: Session, conta_origem_id: int, conta_destino_id: int, valor: Decimal, data_mov: date, descricao: str, grupo_id: str, efetivado: int = 1) -> Operacao:
+        dt_efet = datetime.combine(data_mov, datetime.min.time()) if efetivado else None
+        op_saida = Operacao(
+            operacoes_data_lancamento=data_mov,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta_origem_id,
+            operacoes_valor=-abs(valor),
+            operacoes_tipo=4,
+            operacoes_efetivado=1 if efetivado else 0,
+            operacoes_data_efetivado=dt_efet,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_id,
+        )
+        op_entrada = Operacao(
+            operacoes_data_lancamento=data_mov,
+            operacoes_descricao=descricao,
+            operacoes_conta=conta_destino_id,
+            operacoes_valor=abs(valor),
+            operacoes_tipo=4,
+            operacoes_efetivado=1 if efetivado else 0,
+            operacoes_data_efetivado=dt_efet,
+            operacoes_validacao=1,
+            operacoes_grupo_id=grupo_id,
+        )
+        db.add(op_saida)
+        db.add(op_entrada)
+        db.flush()
+        op_saida.operacoes_transf_rel = op_entrada.operacoes_id
+        op_entrada.operacoes_transf_rel = op_saida.operacoes_id
+        return op_saida
+
+    @staticmethod
+    def integrar_movimentacao_caixa(db: Session, mov: InvestMovimentacao, conta_externa_id: int, efetivado: int = 1) -> dict:
+        """Cria transferência financeira idempotente para APORTE/RESGATE em caixa."""
+        tipo = (mov.tipo or "").upper()
+        if tipo not in ("APORTE", "RESGATE"):
+            return {"ok": False, "erro": "Tipo de movimentação não elegível para integração de caixa."}
+
+        carteira = db.query(InvestCarteira).filter(InvestCarteira.id == mov.carteira_id).first()
+        if not carteira or not carteira.conta_financeira_id:
             return {"ok": False, "erro": "Carteira sem conta financeira vinculada."}
-        # Fase 1: criar operação financeira (transferência) de forma idempotente e vincular
-        return {
-            "ok": True,
-            "acao": "RESGATE_TRANSFERENCIA",
-            "conta_origem_id": carteira.conta_financeira_id,
-            "conta_destino_id": conta_destino_id,
-            "valor_liquido": str(valor_liquido),
-            "moeda_id": moeda_id,
-            "data": data_mov.isoformat(),
-            "taxa_cambio": str(taxa_cambio) if taxa_cambio is not None else None,
-            "id_correlacao": id_correlacao,
-            "implementado": False,
-        }
+        if conta_externa_id == carteira.conta_financeira_id:
+            return {"ok": False, "erro": "Conta externa deve ser diferente da conta financeira da carteira."}
+
+        if not mov.id_correlacao:
+            mov.id_correlacao = f"INV-{tipo}-{uuid.uuid4().hex[:12]}"
+
+        existente = IntegracaoFinanceiraService._buscar_mov_integrada(db, mov.id_correlacao, ignorar_mov_id=mov.id)
+        if existente:
+            mov.operacao_financeira_id = existente.operacao_financeira_id
+            return {"ok": True, "operacao_financeira_id": existente.operacao_financeira_id, "id_correlacao": mov.id_correlacao, "reutilizado": True}
+
+        valor = Decimal(str(mov.valor_liquido or mov.valor_bruto or 0))
+        if valor <= 0:
+            return {"ok": False, "erro": "Valor inválido para integração."}
+
+        if tipo == "APORTE":
+            conta_origem_id = conta_externa_id
+            conta_destino_id = carteira.conta_financeira_id
+            descricao = f"Aporte investimento - {carteira.nome}"
+        else:  # RESGATE
+            conta_origem_id = carteira.conta_financeira_id
+            conta_destino_id = conta_externa_id
+            descricao = f"Resgate investimento - {carteira.nome}"
+
+        grupo_id = f"INVTRF-{uuid.uuid4().hex[:10]}"
+        op_saida = IntegracaoFinanceiraService._criar_transferencia(
+            db, conta_origem_id, conta_destino_id, abs(valor), mov.data_negociacao, descricao, grupo_id, efetivado=efetivado
+        )
+        mov.operacao_financeira_id = op_saida.operacoes_id
+        return {"ok": True, "operacao_financeira_id": op_saida.operacoes_id, "id_correlacao": mov.id_correlacao, "reutilizado": False}
 
 
 # ── Posições e movimentações (fundação) ──────────────────────────────────────
@@ -211,15 +254,22 @@ def registrar_movimentacao(
     corretora_id: Optional[int] = None,
     observacoes: Optional[str] = None,
     id_correlacao: Optional[str] = None,
-) -> InvestMovimentacao:
-    """Registra movimentação e atualiza posição/lotes de forma simplificada (Fase 1/2 base)."""
+    integrar_financeiro: bool = False,
+    conta_externa_id: Optional[int] = None,
+    efetivado: int = 1,
+) -> tuple[InvestMovimentacao, Optional[dict]]:
+    """Registra movimentação, atualiza posição/lotes e (opcionalmente) integra aporte/resgate com o financeiro."""
+    tipo_u = (tipo or "").upper()
     qtd = _to_decimal(quantidade)
     pu = _to_decimal(preco_unitario)
     bruto = _to_decimal(valor_bruto)
     custos = _to_decimal(taxas_custos)
     if bruto == 0 and qtd != 0 and pu != 0:
         bruto = (qtd * pu).quantize(Decimal("0.01"))
-    liquido = (bruto - custos) if tipo in ("VENDA", "RESGATE") else (bruto + custos)
+    if tipo_u in ("VENDA", "RESGATE", "RESGATE_ATIVO"):
+        liquido = (bruto - custos) if bruto != 0 else bruto
+    else:
+        liquido = (bruto + custos) if bruto != 0 else bruto
     if liquido == 0:
         liquido = bruto
     valor_brl = None
@@ -229,10 +279,27 @@ def registrar_movimentacao(
         except Exception:
             valor_brl = None
 
+    # validação antecipada de integração
+    integracao_result = None
+    if integrar_financeiro and tipo_u in ("APORTE", "RESGATE"):
+        carteira = db.query(InvestCarteira).filter(InvestCarteira.id == carteira_id).first()
+        if not carteira:
+            raise ValueError("Carteira não encontrada.")
+        if not carteira.conta_financeira_id:
+            raise ValueError("Carteira sem conta financeira vinculada para integração.")
+        if not conta_externa_id:
+            raise ValueError("Selecione a conta financeira externa para integrar o aporte/resgate.")
+        if int(conta_externa_id) == int(carteira.conta_financeira_id):
+            raise ValueError("Conta externa deve ser diferente da conta financeira da carteira.")
+        if _to_decimal(liquido) <= 0 and _to_decimal(bruto) > 0:
+            liquido = bruto
+        if _to_decimal(liquido) <= 0:
+            raise ValueError("Informe um valor válido para integrar o aporte/resgate.")
+
     mov = InvestMovimentacao(
         carteira_id=carteira_id,
         ativo_id=ativo_id,
-        tipo=tipo.upper(),
+        tipo=tipo_u,
         data_negociacao=data_negociacao,
         data_liquidacao=data_negociacao,
         quantidade=qtd if qtd != 0 else None,
@@ -251,10 +318,9 @@ def registrar_movimentacao(
     db.flush()
 
     # Atualização de posição/lotes para operações com ativo e quantidade
-    if ativo_id and qtd != 0 and tipo.upper() in ("COMPRA", "APLICACAO", "APORTE_ATIVO", "VENDA", "RESGATE_ATIVO"):
+    if ativo_id and qtd != 0 and tipo_u in ("COMPRA", "APLICACAO", "APORTE_ATIVO", "VENDA", "RESGATE_ATIVO"):
         pos = obter_ou_criar_posicao(db, carteira_id, ativo_id)
-        if tipo.upper() in ("COMPRA", "APLICACAO", "APORTE_ATIVO"):
-            # entrada: novo lote e recálculo de preço médio
+        if tipo_u in ("COMPRA", "APLICACAO", "APORTE_ATIVO"):
             novo_custo = liquido if liquido != 0 else bruto
             novo_custo_brl = valor_brl if valor_brl is not None else Decimal("0")
             pos.quantidade = (Decimal(str(pos.quantidade or 0)) + qtd)
@@ -275,8 +341,7 @@ def registrar_movimentacao(
                 corretora_id=corretora_id,
             )
             db.add(lote)
-        elif tipo.upper() in ("VENDA", "RESGATE_ATIVO"):
-            # saída simplificada (baixa proporcional/FIFO básica no agregado)
+        elif tipo_u in ("VENDA", "RESGATE_ATIVO"):
             pos.quantidade = (Decimal(str(pos.quantidade or 0)) - qtd)
             custo_saida = (Decimal(str(pos.preco_medio or 0)) * qtd)
             pos.custo_total = (Decimal(str(pos.custo_total or 0)) - custo_saida)
@@ -284,7 +349,6 @@ def registrar_movimentacao(
                 pos.quantidade = Decimal("0")
                 pos.custo_total = Decimal("0")
                 pos.preco_medio = Decimal("0")
-            # baixa em lotes abertos (FIFO)
             restante = qtd
             lotes = db.query(InvestLote).filter(InvestLote.posicao_id == pos.id, InvestLote.quantidade_aberta > 0).order_by(InvestLote.data_aquisicao.asc(), InvestLote.id.asc()).all()
             for l in lotes:
@@ -296,6 +360,19 @@ def registrar_movimentacao(
                 restante -= baixa
         db.add(pos)
 
+    # Integração financeira (aportes/resgates em caixa)
+    if integrar_financeiro and tipo_u in ("APORTE", "RESGATE") and conta_externa_id:
+        # garante valor líquido para transferência
+        if _to_decimal(mov.valor_liquido) <= 0 and _to_decimal(mov.valor_bruto) > 0:
+            mov.valor_liquido = mov.valor_bruto
+        integracao_result = IntegracaoFinanceiraService.integrar_movimentacao_caixa(
+            db, mov, int(conta_externa_id), efetivado=1 if efetivado else 0
+        )
+        if not integracao_result.get("ok"):
+            db.rollback()
+            raise ValueError(integracao_result.get("erro") or "Falha ao integrar com o financeiro.")
+        db.add(mov)
+
     db.commit()
     db.refresh(mov)
-    return mov
+    return mov, integracao_result
