@@ -59,13 +59,13 @@
 <div class="card p-0 overflow-hidden">
   <div class="table-wrapper">
     <table>
-      <thead><tr><th>Data</th><th>Origem (id)</th><th>Destino (id)</th><th>Taxa</th><th>Tipo</th><th>Fonte</th></tr></thead>
+      <thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Taxa</th><th>Tipo</th><th>Fonte</th></tr></thead>
       <tbody>
       {% for t in taxas %}
         <tr>
           <td>{{ t.data_referencia }}</td>
-          <td>{{ t.moeda_origem_id }}</td>
-          <td>{{ t.moeda_destino_id }}</td>
+          <td>{{ moedas_map.get(t.moeda_origem_id, '#' ~ t.moeda_origem_id) if moedas_map is defined else t.moeda_origem_id }}</td>
+          <td>{{ moedas_map.get(t.moeda_destino_id, '#' ~ t.moeda_destino_id) if moedas_map is defined else t.moeda_destino_id }}</td>
           <td class="font-bold">{{ t.taxa }}</td>
           <td>{{ t.tipo }}</td>
           <td>{{ t.fonte or '-' }}</td>

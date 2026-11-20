@@ -224,8 +224,9 @@ async def cambio_view(
 ):
     moedas = service.listar_moedas(db)
     taxas = db.query(InvestTaxaCambio).order_by(InvestTaxaCambio.data_referencia.desc(), InvestTaxaCambio.id.desc()).limit(100).all()
+    moedas_map = {m.idcontas_moedas: f"{m.contas_moedas_nome} ({m.contas_moedas_abrev})" for m in moedas}
     return templates.TemplateResponse("investimentos/cambio.html", {
-        "request": request, "sessao": sessao, "moedas": moedas, "taxas": taxas, "msg": msg, "erro": erro,
+        "request": request, "sessao": sessao, "moedas": moedas, "taxas": taxas, "moedas_map": moedas_map, "msg": msg, "erro": erro,
     })
 
 
