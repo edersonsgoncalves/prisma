@@ -55,6 +55,8 @@ async def nova_conta(
     conta_saldo_inicial: str = Form(default="0,00"),
     data_conta_saldo_incial: str = Form(default=None),
     contas_desconsiderar_saldo: str = Form(default=None),
+    codigo_banco: str = Form(default=""),
+    numero_conta: str = Form(default=""),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -70,12 +72,16 @@ async def nova_conta(
     
     # Checkbox vem como "on" ou None
     desconsiderar = 1 if contas_desconsiderar_saldo == "on" else 0
+    codigo_banco = (codigo_banco or "").strip() or None
+    numero_conta = (numero_conta or "").strip() or None
 
     conta = ContaBancaria(
         nome_conta=nome, tipo_conta=tipo,
         conta_moeda=conta_moeda, contas_limite=limite_float,
         contas_cartao_fechamento=fechamento,
-        contas_desconsiderar_saldo=desconsiderar
+        contas_desconsiderar_saldo=desconsiderar,
+        contas_codigo_banco=codigo_banco,
+        contas_numero=numero_conta,
     )
     db.add(conta); db.flush() # flush para pegar o ID antes do commit
 
@@ -106,6 +112,8 @@ async def editar_conta(
     limite: str = Form(default="0,00"),
     fechamento: int = Form(default=0),
     contas_desconsiderar_saldo: str = Form(default=None),
+    codigo_banco: str = Form(default=""),
+    numero_conta: str = Form(default=""),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -122,5 +130,7 @@ async def editar_conta(
         conta.conta_moeda = conta_moeda; conta.contas_limite = limite_float
         conta.contas_cartao_fechamento = fechamento
         conta.contas_desconsiderar_saldo = 1 if contas_desconsiderar_saldo == "on" else 0
+        conta.contas_codigo_banco = (codigo_banco or "").strip() or None
+        conta.contas_numero = (numero_conta or "").strip() or None
         db.commit()
     return RedirectResponse(url="/contas", status_code=302)

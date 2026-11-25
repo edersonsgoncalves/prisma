@@ -88,6 +88,8 @@ class ContaBancaria(Base):
     contas_desconsiderar_saldo: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
+    contas_codigo_banco: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    contas_numero: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
 
     operacoes: Mapped[List["Operacao"]] = relationship(back_populates="conta")
     faturas: Mapped[List["FaturaCartao"]] = relationship(back_populates="cartao")
