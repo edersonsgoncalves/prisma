@@ -1207,7 +1207,9 @@ function vlmFiltrar() {
       vlmRenderizar(itens, 0, term.toLowerCase());
     } catch (e) {
       if (seq !== vlmBuscaSeq) return;
-      document.getElementById('vlmLista').innerHTML = '<p class="text-danger text-center" style="padding:24px 0;">Erro ao buscar lançamentos.</p>';
+      console.error('Erro busca OFX vínculos:', e);
+      const msg = (e && e.message) ? e.message : 'Erro ao buscar lançamentos.';
+      document.getElementById('vlmLista').innerHTML = '<p class="text-danger text-center" style="padding:24px 0;">' + esc(msg) + ' Tente novamente.</p>';
     }
   }, 250);
 }

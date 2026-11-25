@@ -59,17 +59,22 @@ async def listar_lancamentos(
     if conta_id:
         query = query.filter(Operacao.operacoes_conta == conta_id)
     if q and q.strip():
-        termo = f"%{q.strip()}%"
-        conds = [Operacao.operacoes_descricao.ilike(termo)]
-        # permite buscar por valor (ex.: 123,45 ou 123.45)
-        termo_val = q.strip().replace(".", "").replace(",", ".")
+        termo_raw = q.strip()
+        termo_like = f"%{termo_raw.lower()}%"
         try:
-            from decimal import Decimal as _D
-            val = abs(_D(termo_val))
-            conds.append(func.abs(Operacao.operacoes_valor) == val)
+            conds = [func.lower(func.coalesce(Operacao.operacoes_descricao, "")).like(termo_like)]
+            # permite buscar por valor (ex.: 123,45 ou 123.45)
+            termo_val = termo_raw.replace(".", "").replace(",", ".")
+            try:
+                from decimal import Decimal as _D
+                val = abs(_D(termo_val))
+                conds.append(func.abs(Operacao.operacoes_valor) == val)
+            except Exception:
+                pass
+            query = query.filter(or_(*conds))
         except Exception:
+            # fallback seguro: não quebra a listagem se busca falhar
             pass
-        query = query.filter(or_(*conds))
     ops = query.order_by(desc(Operacao.operacoes_data_lancamento)).limit(limit).all()
     resultado = []
     for op in ops:
