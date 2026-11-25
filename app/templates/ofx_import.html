@@ -976,7 +976,12 @@ function resetar() {
 ========================================================================= */
 let vlmIdxOfx      = null;   // índice em ofxTransacoes
 let vlmSelecionado = null;   // objeto do BD selecionado
-let vlmTodosDB     = [];     // cache dos lançamentos buscados
+let vlmTodosDB     = [];     // cache dos lançamentos buscados (base)
+let vlmExibidos    = [];     // lista atualmente renderizada
+let vlmUltimoOcultos = 0;
+let vlmUltimoTerm  = '';
+let vlmBuscaTimer  = null;
+let vlmBuscaSeq    = 0;
 
 // ── Scoring (Data 40 + Tipo 25 + Descrição 20 + Valor 15) ────────────────
 function vlmScore(ofx, db) {
@@ -1088,54 +1093,22 @@ async function abrirVincularModal(idx) {
   vlmFiltrar();
 }
 
-function vlmFiltrar() {
-  const t    = ofxTransacoes[vlmIdxOfx];
-  const term = document.getElementById('vlmBusca').value.trim().toLowerCase();
-
-  const dOfx = new Date(t.data + 'T12:00');
-  const monthOfx = dOfx.getMonth();
-  const yearOfx = dOfx.getFullYear();
-
-  let ocultos = 0;
-  const filtrados = [];
-
-  vlmTodosDB.forEach(l => {
-    if (term) {
-      const desc = (l.operacoes_descricao || l.descricao || '').toLowerCase();
-      const cat  = (l.operacoes_categoria_nome || l.categoria || '').toLowerCase();
-      const val  = String(l.operacoes_valor || l.valor || '');
-
-      const d2Str = l.operacoes_data_lancamento || l.data_lancamento || l.data || '';
-      let dateFmt = '';
-      if (d2Str) {
-        const p = d2Str.substr(0, 10).split('-');
-        if (p.length === 3) dateFmt = `${p[2]}/${p[1]}/${p[0]} ${p[2]}/${p[1]}`;
-      }
-
-      if (desc.includes(term) || cat.includes(term) || val.includes(term) || dateFmt.includes(term)) {
-        filtrados.push(l);
-      }
-    } else {
-      const jaVinculado = !!(l.operacoes_fitid || l.ofx_fitid);
-      const d2Str = l.operacoes_data_lancamento || l.data_lancamento || l.data || '';
-      const d2 = new Date(d2Str + 'T12:00');
-      const dataFora = (!isNaN(d2) && (d2.getMonth() !== monthOfx || d2.getFullYear() !== yearOfx));
-
-      if (jaVinculado || dataFora) {
-        ocultos++;
-      } else {
-        filtrados.push(l);
-      }
-    }
-  });
-
-  const scored = filtrados
+function vlmRenderizar(lista, ocultos, term) {
+  const t = ofxTransacoes[vlmIdxOfx];
+  const scored = (lista || [])
     .map(l => ({ ...l, _sc: vlmScore(t, l) }))
     .sort((a, b) => b._sc.total - a._sc.total);
+
+  vlmExibidos = scored;
+  vlmUltimoOcultos = ocultos || 0;
+  vlmUltimoTerm = term || '';
 
   let msgCount = scored.length + ' resultado' + (scored.length !== 1 ? 's' : '');
   if (!term && ocultos > 0) {
     msgCount += ` <span style="margin-left:8px; opacity:0.7; color:#f59e0b;">(${ocultos} ocultos — use a barra para ver demais)</span>`;
+  }
+  if (term) {
+    msgCount += ` <span style="margin-left:8px; opacity:0.7; color:var(--text-muted);">(busca no servidor)</span>`;
   }
   document.getElementById('vlmCount').innerHTML = msgCount;
 
@@ -1167,7 +1140,6 @@ function vlmFiltrar() {
       onmouseover="this.style.background='${isSel ? 'rgba(59,130,246,.08)' : 'rgba(255,255,255,.03)'}'"
       onmouseout="this.style.background='${isSel ? 'rgba(59,130,246,.08)' : 'transparent'}'">
 
-      <!-- Score ring -->
       <div style="width:40px;height:40px;position:relative;flex-shrink:0;">
         <svg width="40" height="40" viewBox="0 0 40 40" style="transform:rotate(-90deg);">
           <circle cx="20" cy="20" r="16" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="3"/>
@@ -1178,7 +1150,6 @@ function vlmFiltrar() {
              font-size:10px;font-weight:700;color:${cor};">${sc.total}</div>
       </div>
 
-      <!-- Info -->
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:600;margin-bottom:2px;
              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(desc)}</div>
@@ -1187,7 +1158,6 @@ function vlmFiltrar() {
         </div>
       </div>
 
-      <!-- Valor + badge -->
       <div style="text-align:right;flex-shrink:0;">
         <div class="${tipoC==='C'?'text-success':'text-danger'}"
              style="font-size:13px;font-weight:700;">${fmtM(valor)}</div>
@@ -1198,11 +1168,57 @@ function vlmFiltrar() {
   }).join('');
 }
 
+function vlmFiltrar() {
+  const term = document.getElementById('vlmBusca').value.trim();
+  if (vlmBuscaTimer) clearTimeout(vlmBuscaTimer);
+
+  if (!term) {
+    // Sem termo: usa base local e aplica regra de ocultar (já vinculado / fora do mês)
+    const t = ofxTransacoes[vlmIdxOfx];
+    const dOfx = new Date(t.data + 'T12:00');
+    const monthOfx = dOfx.getMonth();
+    const yearOfx = dOfx.getFullYear();
+    let ocultos = 0;
+    const filtrados = [];
+    (vlmTodosDB || []).forEach(l => {
+      const jaVinculado = !!(l.operacoes_fitid || l.ofx_fitid);
+      const d2Str = l.operacoes_data_lancamento || l.data_lancamento || l.data || '';
+      const d2 = new Date(d2Str + 'T12:00');
+      const dataFora = (!isNaN(d2) && (d2.getMonth() !== monthOfx || d2.getFullYear() !== yearOfx));
+      if (jaVinculado || dataFora) ocultos++;
+      else filtrados.push(l);
+    });
+    vlmRenderizar(filtrados, ocultos, '');
+    return;
+  }
+
+  // Com termo: busca no servidor (evita limitar a 300 recentes locais)
+  document.getElementById('vlmLista').innerHTML = '<p class="text-muted text-center" style="padding:24px 0;">Buscando...</p>';
+  const seq = ++vlmBuscaSeq;
+  vlmBuscaTimer = setTimeout(async () => {
+    try {
+      let url = '/lancamentos/listar?limit=300&q=' + encodeURIComponent(term);
+      if (contaId) url += '&conta_id=' + encodeURIComponent(contaId);
+      const r = await fetch(url, { headers: authHeaders() });
+      if (!r.ok) throw new Error('Erro ' + r.status);
+      const data = await r.json();
+      if (seq !== vlmBuscaSeq) return; // resposta antiga
+      const itens = Array.isArray(data) ? data : (data.operacoes || data.lancamentos || []);
+      vlmRenderizar(itens, 0, term.toLowerCase());
+    } catch (e) {
+      if (seq !== vlmBuscaSeq) return;
+      document.getElementById('vlmLista').innerHTML = '<p class="text-danger text-center" style="padding:24px 0;">Erro ao buscar lançamentos.</p>';
+    }
+  }, 250);
+}
+
 // ── Selecionar linha ──────────────────────────────────────────────────────
 function vlmSelecionar(id) {
-  vlmSelecionado = vlmTodosDB.find(l => (l.operacoes_id || l.id) === id) || null;
-  // re-renderiza para atualizar highlight
-  vlmFiltrar();
+  vlmSelecionado = (vlmExibidos || []).find(l => (l.operacoes_id || l.id) === id)
+    || (vlmTodosDB || []).find(l => (l.operacoes_id || l.id) === id)
+    || null;
+  // re-renderiza apenas o estado atual (sem nova busca)
+  vlmRenderizar(vlmExibidos || [], vlmUltimoOcultos, vlmUltimoTerm);
   const btn  = document.getElementById('vlmBtnVincular');
   const info = document.getElementById('vlmSelecionadoInfo');
   if (vlmSelecionado) {

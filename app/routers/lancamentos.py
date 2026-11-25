@@ -50,13 +50,26 @@ async def listar_lancamentos(
     request: Request,
     limit: int = Query(300),
     conta_id: Optional[int] = Query(None),
+    q: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login)
     ):
-    from sqlalchemy import desc
+    from sqlalchemy import desc, or_
     query = db.query(Operacao)
     if conta_id:
         query = query.filter(Operacao.operacoes_conta == conta_id)
+    if q and q.strip():
+        termo = f"%{q.strip()}%"
+        conds = [Operacao.operacoes_descricao.ilike(termo)]
+        # permite buscar por valor (ex.: 123,45 ou 123.45)
+        termo_val = q.strip().replace(".", "").replace(",", ".")
+        try:
+            from decimal import Decimal as _D
+            val = abs(_D(termo_val))
+            conds.append(func.abs(Operacao.operacoes_valor) == val)
+        except Exception:
+            pass
+        query = query.filter(or_(*conds))
     ops = query.order_by(desc(Operacao.operacoes_data_lancamento)).limit(limit).all()
     resultado = []
     for op in ops:
