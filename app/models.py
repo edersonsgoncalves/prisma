@@ -89,6 +89,7 @@ class ContaBancaria(Base):
         Integer, nullable=True
     )
     contas_codigo_banco: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    contas_agencia: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     contas_numero: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
 
     operacoes: Mapped[List["Operacao"]] = relationship(back_populates="conta")

@@ -42,7 +42,7 @@
               {{ conta.nome_conta }}
             </h3>
           </div>
-          <button class="btn-icon btn-xs" onclick='openAccountModal("edit", {id: "{{ conta.conta_id }}", nome: {{ conta.nome_conta|tojson }}, tipo: "{{ conta.tipo_conta }}", moeda: "{{ conta.conta_moeda }}", limite: "{{ conta.contas_limite or 0 }}", fechamento: "{{ conta.contas_cartao_fechamento or 0 }}", desconsiderar: "{{ conta.contas_desconsiderar_saldo or 0 }}", codigo_banco: {{ (conta.contas_codigo_banco or "")|tojson }}, numero_conta: {{ (conta.contas_numero or "")|tojson }}})'>
+          <button class="btn-icon btn-xs" onclick='openAccountModal("edit", {id: "{{ conta.conta_id }}", nome: {{ conta.nome_conta|tojson }}, tipo: "{{ conta.tipo_conta }}", moeda: "{{ conta.conta_moeda }}", limite: "{{ conta.contas_limite or 0 }}", fechamento: "{{ conta.contas_cartao_fechamento or 0 }}", desconsiderar: "{{ conta.contas_desconsiderar_saldo or 0 }}", codigo_banco: {{ (conta.contas_codigo_banco or "")|tojson }}, agencia: {{ (conta.contas_agencia or "")|tojson }}, numero_conta: {{ (conta.contas_numero or "")|tojson }}})'>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
         </div>
@@ -93,9 +93,16 @@
           <input type="text" id="conta_codigo_banco" name="codigo_banco" class="form-control" placeholder="Ex: 0341" maxlength="20">
         </div>
         <div class="form-group">
+          <label class="form-label" for="conta_agencia">Agência</label>
+          <input type="text" id="conta_agencia" name="agencia" class="form-control" placeholder="Ex: 1234" maxlength="20">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
           <label class="form-label" for="conta_numero">Nº da conta (OFX/ACCTID)</label>
           <input type="text" id="conta_numero" name="numero_conta" class="form-control" placeholder="Ex: 3122743036" maxlength="60">
         </div>
+        <div></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -166,6 +173,7 @@
     const form = document.getElementById('formConta');
     const inputNome = document.getElementById('conta_nome');
     const inputCodigoBanco = document.getElementById('conta_codigo_banco');
+    const inputAgencia = document.getElementById('conta_agencia');
     const inputNumeroConta = document.getElementById('conta_numero');
     const selectTipo = document.getElementById('conta_tipo');
     const inputMoeda = document.getElementById('conta_moeda'); // Agora é um hidden input
@@ -184,6 +192,7 @@
       form.action = '/contas/editar/' + data.id;
       inputNome.value = data.nome;
       if (inputCodigoBanco) inputCodigoBanco.value = data.codigo_banco || '';
+      if (inputAgencia) inputAgencia.value = data.agencia || '';
       if (inputNumeroConta) inputNumeroConta.value = data.numero_conta || '';
       selectTipo.value = data.tipo;
       
@@ -204,6 +213,7 @@
       form.action = '/contas/nova';
       form.reset();
       if (inputCodigoBanco) inputCodigoBanco.value = '';
+      if (inputAgencia) inputAgencia.value = '';
       if (inputNumeroConta) inputNumeroConta.value = '';
       
       // Reset custom select para o padrão (geralmente ID 1)

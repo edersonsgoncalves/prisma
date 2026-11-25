@@ -83,9 +83,11 @@ def _sugerir_conta_do_arquivo(conta_detectada: dict, contas: list[ContaBancaria]
         return None
     acct_id_raw = str(conta_detectada.get("acct_id", "") or "")
     bank_id_raw = str(conta_detectada.get("bank_id", "") or "")
+    branch_id_raw = str(conta_detectada.get("branch_id", "") or "")
     acct_id = "".join(ch for ch in acct_id_raw if ch.isalnum())
     bank_id = "".join(ch for ch in bank_id_raw if ch.isalnum())
-    if not acct_id and not bank_id:
+    branch_id = "".join(ch for ch in branch_id_raw if ch.isalnum())
+    if not acct_id and not bank_id and not branch_id:
         return None
 
     def norm(s: str) -> str:
@@ -98,6 +100,7 @@ def _sugerir_conta_do_arquivo(conta_detectada: dict, contas: list[ContaBancaria]
     for c in contas:
         nome = norm(getattr(c, "nome_conta", "") or "")
         cad_banco = norm(getattr(c, "contas_codigo_banco", "") or "")
+        cad_agencia = norm(getattr(c, "contas_agencia", "") or "")
         cad_numero = norm(getattr(c, "contas_numero", "") or "")
         cad_numero_dig = digits(getattr(c, "contas_numero", "") or "")
         acct_dig = digits(acct_id)
@@ -120,6 +123,11 @@ def _sugerir_conta_do_arquivo(conta_detectada: dict, contas: list[ContaBancaria]
             elif digits(cad_banco) and digits(bank_id) and digits(cad_banco) == digits(bank_id):
                 score += 120
                 motivos.append(f"código do banco cadastrado confere com o OFX ({bank_id_raw})")
+
+        if cad_agencia and branch_id:
+            if cad_agencia == norm(branch_id) or (digits(cad_agencia) and digits(branch_id) and digits(cad_agencia) == digits(branch_id)):
+                score += 60
+                motivos.append(f"agência cadastrada confere com o OFX ({branch_id_raw})")
 
         # 2) Fallback heurístico pelo nome da conta
         if acct_id and nome:

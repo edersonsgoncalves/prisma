@@ -22,7 +22,7 @@ def _add_column(conn, ddl: str, name: str):
 
 
 def migrate():
-    print("Iniciando migração contas_codigo_banco/contas_numero...")
+    print("Iniciando migração contas_codigo_banco/contas_agencia/contas_numero...")
     with engine.connect() as conn:
         _add_column(
             conn,
@@ -31,7 +31,12 @@ def migrate():
         )
         _add_column(
             conn,
-            "ALTER TABLE contas_bancarias ADD COLUMN contas_numero VARCHAR(60) NULL AFTER contas_codigo_banco",
+            "ALTER TABLE contas_bancarias ADD COLUMN contas_agencia VARCHAR(20) NULL AFTER contas_codigo_banco",
+            "contas_agencia",
+        )
+        _add_column(
+            conn,
+            "ALTER TABLE contas_bancarias ADD COLUMN contas_numero VARCHAR(60) NULL AFTER contas_agencia",
             "contas_numero",
         )
     print("Migração concluída com sucesso!")
