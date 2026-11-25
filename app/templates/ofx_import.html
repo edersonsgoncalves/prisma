@@ -159,14 +159,16 @@
     </div>
 
     <div class="form-group" id="contaGroup" style="display:none; margin-top:20px;">
-      <label class="form-label" style="font-size:12px;">Conta bancária do extrato <span class="text-muted">(opcional)</span></label>
+      <label class="form-label" style="font-size:12px;">Conta bancária do extrato <span class="text-muted" id="contaLabelHint">(confirme antes de importar)</span></label>
       <select id="selConta" class="form-control">
-        <option value="">— Todas as contas —</option>
+        <option value="">— Selecione a conta —</option>
         {% for conta in contas %}
         <option value="{{ conta.conta_id }}">{{ conta.nome_conta }}</option>
         {% endfor %}
       </select>
-      <small class="text-muted">Filtra o matching apenas nos lançamentos dessa conta.</small>
+      <small class="text-muted">Usada para matching e obrigatória para inserir novos lançamentos.</small>
+      <div id="contaAviso" style="display:none; margin-top:10px; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.4;"></div>
+      <div id="contaDetectadaInfo" style="display:none; margin-top:8px; font-size:11px; color:var(--text-muted);"></div>
     </div>
 
     <div style="display:flex; justify-content:flex-end; margin-top:20px;">
@@ -198,6 +200,25 @@
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
     <span style="flex:1;"><strong>Atenção:</strong> <span id="alertDupQtd">0</span> lançamento(s) com FITID já registrado — ocultos e ignorados por padrão.</span>
     <button class="btn btn-sm" onclick="toggleDuplicadas()" id="btnToggleDup" style="background:var(--card-bg);border:1px solid var(--border);padding:4px 8px;font-size:11px;margin-left:12px;white-space:nowrap;">Exibir ocultos</button>
+  </div>
+
+  <div class="card" style="padding:16px; margin-bottom:16px;">
+    <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+      <div style="flex:1; min-width:260px;">
+        <label class="form-label" style="font-size:12px;">Conta bancária da importação <span class="text-muted">(obrigatória para inserir novos)</span></label>
+        <select id="selContaRevisao" class="form-control" onchange="onContaRevisaoChange(this.value)">
+          <option value="">— Selecione a conta —</option>
+          {% for conta in contas %}
+          <option value="{{ conta.conta_id }}">{{ conta.nome_conta }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" class="btn btn-sm btn-primary" id="btnConfirmarContaRevisao" onclick="confirmarContaRevisao()">Confirmar conta</button>
+      </div>
+    </div>
+    <div id="contaDetectadaInfoRevisao" style="display:none; margin-top:8px; font-size:11px; color:var(--text-muted);"></div>
+    <div id="contaAvisoRevisao" style="display:none; margin-top:10px; padding:10px 12px; border-radius:8px; font-size:12px; line-height:1.4;"></div>
   </div>
 
   <div class="card" style="padding:0; overflow:hidden; margin-bottom:16px;">
@@ -247,6 +268,8 @@
         <span class="switch-label label-sim" style="margin-left:8px; font-weight:600; color:var(--primary);">Importar como Efetivados</span>
       </label>
     </div>
+
+    <div id="confirmContaAviso" style="display:none; margin-bottom:16px; padding:12px 14px; border-radius:8px; font-size:12px; line-height:1.4;"></div>
 
     <div class="ofx-stats" style="margin-bottom:20px;">
       <div class="ofx-stat"><div class="ofx-stat-val" id="c-ef" style="color:var(--primary)">0</div><div class="ofx-stat-lbl">Efetivar</div></div>
@@ -419,6 +442,10 @@
 let ofxTransacoes = [];
 let selectedFile  = null;
 let contaId       = null;
+let contaConfirmada = false;
+let contaDetectada  = null;
+let contaSugerida   = null;
+let contaIdAnalise  = null;
 
 const CONTAS_OFX = [
 {% for conta in contas %}
@@ -512,12 +539,182 @@ function handleFile(f) {
 }
 document.getElementById('selConta').addEventListener('change', function() {
   contaId = this.value || null;
+  contaConfirmada = !!contaId; // seleção manual = confirmação explícita
+  syncContaSelects();
+  atualizarAvisoConta();
+  atualizarAvisoContaRevisao();
+  if (ofxTransacoes.length > 0 && String(contaId || '') !== String(contaIdAnalise || '')) {
+    showToast('Conta alterada. Reanalise o arquivo para atualizar matching e sugestões.', 'error');
+  }
 });
+
+function atualizarAvisoConta() {
+  const aviso = document.getElementById('contaAviso');
+  const info  = document.getElementById('contaDetectadaInfo');
+  if (!aviso) return;
+
+  // info detectada
+  if (contaDetectada && (contaDetectada.acct_id || contaDetectada.bank_id)) {
+    const partes = [];
+    if (contaDetectada.bank_id) partes.push(`Banco: ${esc(contaDetectada.bank_id)}`);
+    if (contaDetectada.branch_id) partes.push(`Ag: ${esc(contaDetectada.branch_id)}`);
+    if (contaDetectada.acct_id) partes.push(`Conta: ${esc(contaDetectada.acct_id)}`);
+    if (contaDetectada.acct_type) partes.push(`Tipo: ${esc(contaDetectada.acct_type)}`);
+    info.style.display = '';
+    info.innerHTML = `<strong>Detectado no arquivo:</strong> ${partes.join(' · ')}`;
+  } else {
+    info.style.display = 'none';
+    info.innerHTML = '';
+  }
+
+  const temInserir = (ofxTransacoes || []).some(t => t.acao === 'inserir');
+  if (!contaId) {
+    aviso.style.display = '';
+    aviso.style.background = 'rgba(245,158,11,.12)';
+    aviso.style.border = '1px solid rgba(245,158,11,.35)';
+    aviso.style.color = '#fbbf24';
+    aviso.innerHTML = temInserir
+      ? '⚠️ <strong>Nenhuma conta selecionada.</strong> Selecione a conta do extrato para importar novos lançamentos. Itens “Inserir” serão bloqueados até a confirmação.'
+      : '⚠️ <strong>Nenhuma conta selecionada.</strong> Selecione a conta para melhorar o matching e permitir inserção de novos lançamentos.';
+    return;
+  }
+
+  if (!contaConfirmada) {
+    aviso.style.display = '';
+    aviso.style.background = 'rgba(245,158,11,.12)';
+    aviso.style.border = '1px solid rgba(245,158,11,.35)';
+    aviso.style.color = '#fbbf24';
+    const nome = (CONTAS_OFX.find(c => String(c.id) === String(contaId)) || {}).nome || 'Conta selecionada';
+    const motivo = contaSugerida && String(contaSugerida.conta_id) === String(contaId)
+      ? `<div style="margin-top:4px;color:var(--text-muted);">${esc(contaSugerida.motivo || 'Sugestão baseada no arquivo OFX.')}</div>`
+      : '';
+    aviso.innerHTML = `⚠️ <strong>Conta sugerida pelo arquivo:</strong> ${esc(nome)}. Confirme a conta antes de importar.
+      ${motivo}
+      <div style="margin-top:8px;"><button class="btn btn-sm btn-primary" type="button" onclick="confirmarContaSugerida()">Confirmar conta</button></div>`;
+    return;
+  }
+
+  // confirmado
+  aviso.style.display = '';
+  aviso.style.background = 'rgba(34,197,94,.10)';
+  aviso.style.border = '1px solid rgba(34,197,94,.30)';
+  aviso.style.color = '#86efac';
+  const nome = (CONTAS_OFX.find(c => String(c.id) === String(contaId)) || {}).nome || 'Conta selecionada';
+  aviso.innerHTML = `✓ Conta confirmada para importação: <strong>${esc(nome)}</strong>`;
+}
+
+function syncContaSelects() {
+  const s1 = document.getElementById('selConta');
+  const s2 = document.getElementById('selContaRevisao');
+  const v = contaId ? String(contaId) : '';
+  if (s1 && s1.value !== v) s1.value = v;
+  if (s2 && s2.value !== v) s2.value = v;
+}
+
+function atualizarAvisoContaRevisao() {
+  const aviso = document.getElementById('contaAvisoRevisao');
+  const info  = document.getElementById('contaDetectadaInfoRevisao');
+  const btn   = document.getElementById('btnConfirmarContaRevisao');
+  if (!aviso) return;
+  syncContaSelects();
+
+  if (contaDetectada && (contaDetectada.acct_id || contaDetectada.bank_id)) {
+    const partes = [];
+    if (contaDetectada.bank_id) partes.push(`Banco: ${esc(contaDetectada.bank_id)}`);
+    if (contaDetectada.branch_id) partes.push(`Ag: ${esc(contaDetectada.branch_id)}`);
+    if (contaDetectada.acct_id) partes.push(`Conta: ${esc(contaDetectada.acct_id)}`);
+    if (contaDetectada.acct_type) partes.push(`Tipo: ${esc(contaDetectada.acct_type)}`);
+    info.style.display = '';
+    info.innerHTML = `<strong>Detectado no arquivo:</strong> ${partes.join(' · ')}`;
+  } else {
+    info.style.display = 'none';
+    info.innerHTML = '';
+  }
+
+  const temInserir = (ofxTransacoes || []).some(t => t.acao === 'inserir');
+  if (!contaId) {
+    aviso.style.display = '';
+    aviso.style.background = 'rgba(239,68,68,.10)';
+    aviso.style.border = '1px solid rgba(239,68,68,.35)';
+    aviso.style.color = '#fca5a5';
+    aviso.innerHTML = temInserir
+      ? '⚠️ <strong>Selecione a conta bancária</strong> para importar novos lançamentos.'
+      : 'Selecione a conta bancária do extrato para melhorar o matching e evitar erros na importação.';
+    if (btn) btn.disabled = true;
+    return;
+  }
+
+  if (!contaConfirmada) {
+    const nome = (CONTAS_OFX.find(c => String(c.id) === String(contaId)) || {}).nome || 'Conta selecionada';
+    const motivo = contaSugerida && String(contaSugerida.conta_id) === String(contaId)
+      ? `<div style="margin-top:4px;color:var(--text-muted);">${esc(contaSugerida.motivo || 'Sugestão baseada no arquivo OFX.')}</div>`
+      : '';
+    aviso.style.display = '';
+    aviso.style.background = 'rgba(245,158,11,.12)';
+    aviso.style.border = '1px solid rgba(245,158,11,.35)';
+    aviso.style.color = '#fbbf24';
+    aviso.innerHTML = `⚠️ <strong>Conta sugerida:</strong> ${esc(nome)}. Confirme a sugestão ou selecione outra conta antes de avançar.${motivo}`;
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar conta'; }
+    return;
+  }
+
+  const nome = (CONTAS_OFX.find(c => String(c.id) === String(contaId)) || {}).nome || 'Conta selecionada';
+  aviso.style.display = '';
+  aviso.style.background = 'rgba(34,197,94,.10)';
+  aviso.style.border = '1px solid rgba(34,197,94,.30)';
+  aviso.style.color = '#86efac';
+  aviso.innerHTML = `✓ Conta confirmada: <strong>${esc(nome)}</strong>`;
+  if (btn) { btn.disabled = false; btn.textContent = 'Conta confirmada'; }
+}
+
+function onContaRevisaoChange(val) {
+  contaId = val || null;
+  contaConfirmada = !!contaId; // mexeu no input = confirmação explícita
+  atualizarAvisoConta();
+  atualizarAvisoContaRevisao();
+  if (ofxTransacoes.length > 0 && String(contaId || '') !== String(contaIdAnalise || '')) {
+    showToast('Conta alterada. Reanalise o arquivo para atualizar matching e sugestões.', 'error');
+  }
+}
+
+function confirmarContaRevisao() {
+  const s2 = document.getElementById('selContaRevisao');
+  if (s2 && s2.value) contaId = s2.value;
+  if (!contaId) { showToast('Selecione uma conta antes de confirmar.', 'error'); return; }
+  contaConfirmada = true;
+  atualizarAvisoConta();
+  atualizarAvisoContaRevisao();
+}
+
+function confirmarContaSugerida() {
+  if (contaId) {
+    contaConfirmada = true;
+    atualizarAvisoConta();
+    atualizarAvisoContaRevisao();
+  }
+}
 
 /* =========================================================================
    STEPPER
 ========================================================================= */
 function goTo(n) {
+  if (n === 3) {
+    // exige confirmação explícita da conta no passo 2 antes de avançar
+    const temInserir = (ofxTransacoes || []).some(t => t.acao === 'inserir');
+    if (!contaId) {
+      showToast('Selecione a conta bancária da importação antes de avançar.', 'error');
+      atualizarAvisoContaRevisao();
+      return;
+    }
+    if (!contaConfirmada) {
+      showToast('Confirme a conta sugerida ou selecione outra conta antes de avançar.', 'error');
+      atualizarAvisoContaRevisao();
+      return;
+    }
+    if (temInserir && String(contaId || '') !== String(contaIdAnalise || '')) {
+      // conta mudou após análise: permitir, mas já avisado; matching pode estar stale
+    }
+  }
   document.querySelectorAll('.ofx-sec').forEach((s,i) => s.classList.toggle('active', i+1===n));
   document.querySelectorAll('.ofx-step').forEach((el,i) => {
     el.classList.remove('active','done');
@@ -525,6 +722,7 @@ function goTo(n) {
     else if (i+1<n) el.classList.add('done');
   });
   window.scrollTo({top:0, behavior:'smooth'});
+  if (n===2) atualizarAvisoContaRevisao();
   if (n===3) buildConfirm();
 }
 
@@ -557,7 +755,22 @@ async function analisarArquivo() {
       throw new Error(e.detail || 'Erro ' + r.status);
     }
     const data = await r.json();
-    ofxTransacoes = data.transacoes;
+    ofxTransacoes = data.transacoes || [];
+    contaDetectada = data.conta_detectada || null;
+    contaSugerida  = data.conta_sugerida || null;
+
+    // Se o usuário não selecionou conta, mas o arquivo sugeriu uma, pré-seleciona e exige confirmação explícita
+    if (!contaId && data.conta_sugerida && data.conta_sugerida.conta_id) {
+      contaId = String(data.conta_sugerida.conta_id);
+      contaConfirmada = false;
+      const sel = document.getElementById('selConta');
+      if (sel) sel.value = String(contaId);
+    } else if (contaId) {
+      contaConfirmada = true;
+    }
+    contaIdAnalise = contaId ? String(contaId) : null;
+    atualizarAvisoConta();
+
     buildRevisao();
     goTo(2);
   } catch(e) {
@@ -858,6 +1071,35 @@ function buildConfirm() {
   document.getElementById('c-ins').textContent = ins;
   document.getElementById('c-ign').textContent = ign;
   document.getElementById('c-dup').textContent = dup;
+
+  const avisoEl = document.getElementById('confirmContaAviso');
+  if (avisoEl) {
+    const nomeConta = contaId ? ((CONTAS_OFX.find(c => String(c.id) === String(contaId)) || {}).nome || `Conta #${contaId}`) : '';
+    if (ins > 0 && !contaId) {
+      avisoEl.style.display = '';
+      avisoEl.style.background = 'rgba(239,68,68,.10)';
+      avisoEl.style.border = '1px solid rgba(239,68,68,.35)';
+      avisoEl.style.color = '#fca5a5';
+      avisoEl.innerHTML = '⚠️ <strong>Conta não selecionada.</strong> Volte ao passo 1 e selecione/confirme a conta bancária do extrato antes de importar lançamentos novos.';
+    } else if (ins > 0 && !contaConfirmada) {
+      avisoEl.style.display = '';
+      avisoEl.style.background = 'rgba(245,158,11,.12)';
+      avisoEl.style.border = '1px solid rgba(245,158,11,.35)';
+      avisoEl.style.color = '#fbbf24';
+      const motivo = contaSugerida && String(contaSugerida.conta_id) === String(contaId)
+        ? `<div style="margin-top:4px;color:var(--text-muted);">${esc(contaSugerida.motivo || '')}</div>` : '';
+      avisoEl.innerHTML = `⚠️ <strong>Confirmação necessária.</strong> A conta <strong>${esc(nomeConta)}</strong> foi sugerida pelo arquivo. Volte ao passo 1 e clique em "Confirmar conta" antes de importar.${motivo}`;
+    } else if (contaId) {
+      avisoEl.style.display = '';
+      avisoEl.style.background = 'rgba(34,197,94,.08)';
+      avisoEl.style.border = '1px solid rgba(34,197,94,.25)';
+      avisoEl.style.color = '#86efac';
+      avisoEl.innerHTML = `✓ Conta de importação: <strong>${esc(nomeConta)}</strong>${contaConfirmada ? ' (confirmada)' : ''}`;
+    } else {
+      avisoEl.style.display = 'none';
+      avisoEl.innerHTML = '';
+    }
+  }
 }
 
 /* =========================================================================
@@ -873,6 +1115,13 @@ async function executarImportacao() {
   const total = ofxTransacoes.length;
   const comoEfetivado = document.getElementById('checkImportarEfetivado').checked;
   let minDate = null;
+
+  const temInserir = ofxTransacoes.some(t => t.acao === 'inserir');
+  if (temInserir && (!contaId || !contaConfirmada)) {
+    showToast('Confirme a conta bancária do extrato antes de importar novos lançamentos.', 'error');
+    goTo(3);
+    return;
+  }
 
   for (let i = 0; i < total; i++) {
     const t   = ofxTransacoes[i];
@@ -959,10 +1208,15 @@ async function executarImportacao() {
 ========================================================================= */
 function resetar() {
   selectedFile = null; ofxTransacoes = []; contaId = null;
+  contaConfirmada = false; contaDetectada = null; contaSugerida = null; contaIdAnalise = null;
   fi.value = '';
+  const sel = document.getElementById('selConta');
+  if (sel) sel.value = '';
   dz.classList.remove('has-file','dragover');
   document.getElementById('dropText').textContent = 'Arraste o arquivo aqui ou clique para selecionar';
   document.getElementById('contaGroup').style.display = 'none';
+  const aviso = document.getElementById('contaAviso'); if (aviso) { aviso.style.display = 'none'; aviso.innerHTML = ''; }
+  const det = document.getElementById('contaDetectadaInfo'); if (det) { det.style.display = 'none'; det.innerHTML = ''; }
   document.getElementById('btnAnalisar').disabled = true;
   document.getElementById('alertDup').style.display = 'none';
   document.getElementById('progressBar').style.width = '0%';

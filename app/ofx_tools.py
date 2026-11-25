@@ -77,6 +77,86 @@ class EfetivarPayload(BaseModel):
 # FUNÇÕES PRINCIPAIS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _sugerir_conta_do_arquivo(conta_detectada: dict, contas: list[ContaBancaria]) -> Optional[dict]:
+    """Sugere conta bancária com base nos dados detectados no OFX."""
+    if not conta_detectada or not contas:
+        return None
+    acct_id_raw = str(conta_detectada.get("acct_id", "") or "")
+    bank_id_raw = str(conta_detectada.get("bank_id", "") or "")
+    branch_id_raw = str(conta_detectada.get("branch_id", "") or "")
+    acct_id = "".join(ch for ch in acct_id_raw if ch.isalnum())
+    bank_id = "".join(ch for ch in bank_id_raw if ch.isalnum())
+    branch_id = "".join(ch for ch in branch_id_raw if ch.isalnum())
+    if not acct_id and not bank_id and not branch_id:
+        return None
+
+    def norm(s: str) -> str:
+        return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+    def digits(s: str) -> str:
+        return "".join(ch for ch in (s or "") if ch.isdigit())
+
+    melhor = None  # (score, conta, motivo)
+    for c in contas:
+        nome = norm(getattr(c, "nome_conta", "") or "")
+        cad_banco = norm(getattr(c, "contas_codigo_banco", "") or "")
+        cad_agencia = norm(getattr(c, "contas_agencia", "") or "")
+        cad_numero = norm(getattr(c, "contas_numero", "") or "")
+        cad_numero_dig = digits(getattr(c, "contas_numero", "") or "")
+        acct_dig = digits(acct_id)
+        score = 0
+        motivos = []
+
+        # 1) Match determinístico pelos campos cadastrados (preferencial)
+        if cad_numero and acct_id:
+            if cad_numero == norm(acct_id):
+                score += 220
+                motivos.append(f"número da conta cadastrado confere com o OFX ({acct_id_raw})")
+            elif cad_numero_dig and acct_dig and (cad_numero_dig == acct_dig or acct_dig.endswith(cad_numero_dig) or cad_numero_dig.endswith(acct_dig)):
+                score += 170
+                motivos.append(f"número da conta cadastrado confere parcialmente com o OFX ({acct_id_raw})")
+
+        if cad_banco and bank_id:
+            if cad_banco == norm(bank_id):
+                score += 120
+                motivos.append(f"código do banco cadastrado confere com o OFX ({bank_id_raw})")
+            elif digits(cad_banco) and digits(bank_id) and digits(cad_banco) == digits(bank_id):
+                score += 120
+                motivos.append(f"código do banco cadastrado confere com o OFX ({bank_id_raw})")
+
+        if cad_agencia and branch_id:
+            if cad_agencia == norm(branch_id) or (digits(cad_agencia) and digits(branch_id) and digits(cad_agencia) == digits(branch_id)):
+                score += 60
+                motivos.append(f"agência cadastrada confere com o OFX ({branch_id_raw})")
+
+        # 2) Fallback heurístico pelo nome da conta
+        if acct_id and nome:
+            if norm(acct_id) and norm(acct_id) in nome:
+                score += 100
+                motivos.append(f"número da conta do arquivo ({acct_id_raw}) encontrado no nome da conta")
+            else:
+                for n in (8, 6, 5, 4):
+                    if len(acct_dig) >= n and acct_dig[-n:] in nome:
+                        score += 60 + n
+                        motivos.append(f"final da conta ({acct_dig[-n:]}) encontrado no nome da conta")
+                        break
+        if bank_id and bank_id in nome:
+            score += 20
+            motivos.append(f"código do banco ({bank_id_raw}) encontrado no nome da conta")
+
+        if score > 0 and (melhor is None or score > melhor[0]):
+            melhor = (score, c, "; ".join(dict.fromkeys(motivos)))
+
+    if not melhor:
+        return None
+    _, conta, motivo = melhor
+    return {
+        "conta_id": conta.conta_id,
+        "nome_conta": conta.nome_conta,
+        "motivo": motivo,
+    }
+
+
 def analisar_ofx(
     filepath: str,
     db: Session,
@@ -88,14 +168,33 @@ def analisar_ofx(
     """
     reader = OFXParser()
     transacoes_raw = reader.parse(filepath)
+    conta_detectada = {}
+    try:
+        conta_detectada = reader.parse_account(filepath) or {}
+    except Exception:
+        conta_detectada = {}
+
+    conta_sugerida = None
+    conta_sugerida_automatica = False
+    conta_efetiva = conta_id
+    try:
+        contas_todas = db.query(ContaBancaria).all()
+        conta_sugerida = _sugerir_conta_do_arquivo(conta_detectada, contas_todas)
+        conta_sugerida_automatica = bool((not conta_id) and conta_sugerida)
+        conta_efetiva = conta_id or (conta_sugerida["conta_id"] if conta_sugerida else None)
+    except Exception:
+        # fallback seguro se schema ainda não foi migrado
+        conta_sugerida = None
+        conta_sugerida_automatica = False
+        conta_efetiva = conta_id
 
     resultado = []
     for t in transacoes_raw:
         ofx = _normalizar(t)
-        candidatos = _buscar_candidatos(ofx, db, conta_id)
+        candidatos = _buscar_candidatos(ofx, db, conta_efetiva)
         melhor, score, detalhes = _melhor_match(ofx, candidatos)
         classif = _classificar(score)
-        sugestao_transferencia = _sugerir_transferencia(ofx, db, conta_id, melhor)
+        sugestao_transferencia = _sugerir_transferencia(ofx, db, conta_efetiva, melhor)
 
         resultado.append({
             "fitid":         ofx["fitid"],
@@ -110,7 +209,13 @@ def analisar_ofx(
             "sugestaoTransferencia": sugestao_transferencia,
         })
 
-    return {"transacoes": resultado}
+    return {
+        "transacoes": resultado,
+        "conta_detectada": conta_detectada,
+        "conta_sugerida": conta_sugerida,
+        "conta_sugerida_automatica": conta_sugerida_automatica,
+        "conta_id_usada": conta_efetiva,
+    }
 
 
 def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
@@ -170,16 +275,13 @@ def efetivar_transacao(payload: EfetivarPayload, db: Session) -> dict:
 
     # ── INSERIR ───────────────────────────────────────────────────────────
     if payload.acao == "inserir":
-        if payload.conta_id:
-            conta = db.query(ContaBancaria).filter(
-                ContaBancaria.conta_id == payload.conta_id
-            ).first()
-            if not conta:
-                raise ValueError("Conta não encontrada.")
-        else:
-            conta = db.query(ContaBancaria).first()
-            if not conta:
-                raise ValueError("Nenhuma conta cadastrada no sistema.")
+        if not payload.conta_id:
+            raise ValueError("Selecione e confirme a conta bancária do extrato antes de inserir lançamentos.")
+        conta = db.query(ContaBancaria).filter(
+            ContaBancaria.conta_id == payload.conta_id
+        ).first()
+        if not conta:
+            raise ValueError("Conta não encontrada.")
 
         descricao = (payload.memo or "Importado via OFX").strip() or "Importado via OFX"
         dt_efet = datetime.combine(data_lancamento, datetime.min.time()) if payload.como_efetivado else None

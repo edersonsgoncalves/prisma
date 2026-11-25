@@ -161,6 +161,45 @@ class OFXParser:
                 continue
         return raw_bytes.decode("utf-8", errors="replace")
 
+    def parse_account(self, filepath: str) -> dict:
+        """Extrai informações da conta do OFX (BANKACCTFROM/CCACCTFROM), se disponíveis."""
+        path = Path(filepath)
+        if not path.exists():
+            return {}
+        raw = self._decode_raw(path.read_bytes())
+
+        def tag(block: str, name: str) -> str:
+            # XML: <TAG>value</TAG> | SGML: <TAG>value
+            m = re.search(rf"<{name}>\s*([^<\r\n]+)", block, re.IGNORECASE)
+            return m.group(1).strip() if m else ""
+
+        info = {}
+        m_bank = re.search(r"<BANKACCTFROM>(.*?)</BANKACCTFROM>", raw, re.DOTALL | re.IGNORECASE)
+        if not m_bank:
+            # SGML sem fechamento
+            m_bank = re.search(r"<BANKACCTFROM>(.*?)(?=<BANKTRANLIST>|</STMTRS>|</CCSTMTRS>|<CCACCTFROM>|</OFX>)", raw, re.DOTALL | re.IGNORECASE)
+        if m_bank:
+            b = m_bank.group(1)
+            info = {
+                "bank_id": tag(b, "BANKID"),
+                "branch_id": tag(b, "BRANCHID"),
+                "acct_id": tag(b, "ACCTID"),
+                "acct_type": tag(b, "ACCTTYPE"),
+                "source": "BANKACCTFROM",
+            }
+        else:
+            m_cc = re.search(r"<CCACCTFROM>(.*?)</CCACCTFROM>", raw, re.DOTALL | re.IGNORECASE)
+            if not m_cc:
+                m_cc = re.search(r"<CCACCTFROM>(.*?)(?=<BANKTRANLIST>|</CCSTMTRS>|</STMTRS>|</OFX>)", raw, re.DOTALL | re.IGNORECASE)
+            if m_cc:
+                b = m_cc.group(1)
+                info = {
+                    "acct_id": tag(b, "ACCTID"),
+                    "source": "CCACCTFROM",
+                }
+        # limpa vazios
+        return {k: v for k, v in info.items() if v}
+
     # ------------------------------------------------------------------
     # Detecção de formato
     # ------------------------------------------------------------------
