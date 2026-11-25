@@ -31,7 +31,6 @@ from app.helpers import (
 from app.csrf import CSRFMiddleware
 
 # Importação dos routers
-# Importação dos routers
 from app.routers import (
     dashboard,
     extrato,
@@ -49,6 +48,7 @@ from app.routers import (
 from app.routers import auth as auth_router
 from app.routers.ofx import router as ofx_router
 from app.routers.pdf_fatura import router as pdf_fatura_router
+from app.investimentos.router import router as investimentos_router
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -78,6 +78,7 @@ app.mount(
 
 # ── Routers ───────────────────────────────────────
 app.include_router(auth_router.router)
+app.include_router(investimentos_router)
 app.include_router(dashboard.router)
 app.include_router(extrato.router)
 app.include_router(contas.router)

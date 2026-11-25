@@ -17,6 +17,7 @@ from app.database import get_db
 from app.auth import require_login
 from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao, LogOperacao
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
+from app.templates import templates
 
 # Funções utilitárias compartilhadas
 from .lancamentos_utils import log_evento, get_or_create_fatura, recalcular_total_fatura
@@ -49,13 +50,31 @@ async def listar_lancamentos(
     request: Request,
     limit: int = Query(300),
     conta_id: Optional[int] = Query(None),
+    q: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login)
     ):
-    from sqlalchemy import desc
+    from sqlalchemy import desc, or_
     query = db.query(Operacao)
     if conta_id:
         query = query.filter(Operacao.operacoes_conta == conta_id)
+    if q and q.strip():
+        termo_raw = q.strip()
+        termo_like = f"%{termo_raw.lower()}%"
+        try:
+            conds = [func.lower(func.coalesce(Operacao.operacoes_descricao, "")).like(termo_like)]
+            # permite buscar por valor (ex.: 123,45 ou 123.45)
+            termo_val = termo_raw.replace(".", "").replace(",", ".")
+            try:
+                from decimal import Decimal as _D
+                val = abs(_D(termo_val))
+                conds.append(func.abs(Operacao.operacoes_valor) == val)
+            except Exception:
+                pass
+            query = query.filter(or_(*conds))
+        except Exception:
+            # fallback seguro: não quebra a listagem se busca falhar
+            pass
     ops = query.order_by(desc(Operacao.operacoes_data_lancamento)).limit(limit).all()
     resultado = []
     for op in ops:
@@ -895,3 +914,75 @@ async def editar_massa(
 
     db.commit()
     return RedirectResponse(url=back_url, status_code=303)
+# ── Investir (integração com módulo de investimentos) ────────────────────────
+
+@router.get("/investir", response_class=HTMLResponse)
+async def form_investir(
+    request: Request,
+    msg: Optional[str] = Query(None),
+    erro: Optional[str] = Query(None),
+    sessao=Depends(require_login),
+    db: Session = Depends(get_db),
+):
+    from app.investimentos.models import InvestCarteira
+    carteiras = db.query(InvestCarteira).filter(InvestCarteira.ativo == 1).order_by(InvestCarteira.nome).all()
+    contas = db.query(ContaBancaria).order_by(ContaBancaria.tipo_conta, ContaBancaria.nome_conta).all()
+    carteiras_elegiveis = [c for c in carteiras if c.conta_financeira_id]
+    return templates.TemplateResponse("lancamentos/investir.html", {
+        "request": request,
+        "sessao": sessao,
+        "contas": contas,
+        "carteiras": carteiras,
+        "carteiras_elegiveis": carteiras_elegiveis,
+        "hoje": date.today().isoformat(),
+        "msg": msg,
+        "erro": erro,
+    })
+
+
+@router.post("/investir")
+async def post_investir(
+    request: Request,
+    direcao: str = Form(...),  # APORTAR ou RESGATAR
+    conta_externa_id: int = Form(...),
+    carteira_id: int = Form(...),
+    valor: str = Form(...),
+    data: str = Form(...),
+    efetivado: Optional[str] = Form("1"),
+    observacoes: Optional[str] = Form(None),
+    next_url: Optional[str] = Form(None),
+    sessao=Depends(require_login),
+    db: Session = Depends(get_db),
+):
+    from urllib.parse import quote as _quote
+    from app.investimentos import service as invest_service
+    try:
+        valor_limpo = (valor or "").replace(".", "").replace(",", ".")
+        from decimal import Decimal as _D
+        valor_dec = _D(valor_limpo)
+        if valor_dec <= 0:
+            raise ValueError("Informe um valor maior que zero.")
+        dt = date.fromisoformat(data)
+        tipo = "APORTE_CAIXA" if direcao == "APORTAR" else "RETIRADA_CAIXA"
+        mov, integracao = invest_service.registrar_movimentacao(
+            db=db,
+            carteira_id=carteira_id,
+            tipo=tipo,
+            data_negociacao=dt,
+            valor_bruto=valor_dec,
+            observacoes=(observacoes or None),
+            integrar_financeiro=True,
+            conta_externa_id=int(conta_externa_id),
+            efetivado=1 if str(efetivado) != "0" else 0,
+        )
+    except Exception as e:
+        db.rollback()
+        return RedirectResponse(url=f"/lancamentos/investir?erro={_quote(str(e))}", status_code=303)
+
+    msg = "Aporte registrado e integrado ao financeiro." if direcao == "APORTAR" else "Resgate/retirada registrado e integrado ao financeiro."
+    if integracao and integracao.get("reutilizado"):
+        msg += " (integração já existente)"
+    redirecionar = next_url or "/extrato"
+    # adiciona msg ao redirect se for para extrato sem params complexos
+    sep = '&' if '?' in redirecionar else '?'
+    return RedirectResponse(url=f"{redirecionar}{sep}msg={_quote(msg)}", status_code=303)

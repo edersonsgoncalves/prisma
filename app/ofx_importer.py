@@ -118,7 +118,8 @@ class OFXParser:
         if not path.exists():
             raise FileNotFoundError(f"Arquivo não encontrado: {filepath}")
 
-        raw = path.read_text(encoding="utf-8", errors="replace")
+        raw_bytes = path.read_bytes()
+        raw = self._decode_raw(raw_bytes)
 
         if self._is_xml(raw):
             log.info("Formato detectado: OFX/XML 2.x")
@@ -130,11 +131,50 @@ class OFXParser:
         log.info(f"  → {len(transacoes)} transações encontradas no arquivo")
         return transacoes
 
+    def _decode_raw(self, raw_bytes: bytes) -> str:
+        """Decodifica OFX respeitando CHARSET/ENCODING do header quando possível."""
+        head = raw_bytes[:2000].decode("ascii", errors="ignore").upper()
+        charset = None
+        m = re.search(r"CHARSET:([^\r\n]+)", head)
+        if m:
+            charset = m.group(1).strip()
+        enc_candidates = []
+        if charset:
+            c = charset.replace("-", "_")
+            if c in ("1252", "WIN1252", "WINDOWS_1252", "CP1252"):
+                enc_candidates.append("cp1252")
+            elif c in ("ISO8859_1", "ISO_8859_1", "LATIN1"):
+                enc_candidates.append("latin-1")
+            elif c in ("UTF_8", "UTF8"):
+                enc_candidates.append("utf-8")
+            else:
+                enc_candidates.append(c.lower())
+        enc_candidates += ["utf-8", "cp1252", "latin-1"]
+        seen = set()
+        for enc in enc_candidates:
+            if enc in seen:
+                continue
+            seen.add(enc)
+            try:
+                return raw_bytes.decode(enc)
+            except Exception:
+                continue
+        return raw_bytes.decode("utf-8", errors="replace")
+
     # ------------------------------------------------------------------
     # Detecção de formato
     # ------------------------------------------------------------------
     def _is_xml(self, raw: str) -> bool:
-        return bool(re.search(r"<\?xml|<OFX>|<BANKTRANLIST>", raw, re.IGNORECASE))
+        # OFX 1.x (SGML) tem cabeçalho texto OFXHEADER/DATA:OFXSGML; OFX 2.x é XML (<?xml ...?>)
+        head = raw.lstrip()[:500].upper()
+        if "OFXHEADER:" in head or "DATA:OFXSGML" in head:
+            return False
+        if head.startswith("<?XML") or "<?XML" in head or "<?OFX" in head:
+            return True
+        # fallback: presença de tags de fechamento estilo XML em campos típicos sugere XML
+        if re.search(r"<(TRNTYPE|DTPOSTED|TRNAMT|FITID)>\s*[^<\r\n]+?\s*</\1>", raw, re.IGNORECASE):
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Parser SGML (OFX 1.x)
@@ -142,7 +182,7 @@ class OFXParser:
     def _parse_sgml(self, raw: str) -> list[dict]:
         """
         OFX SGML não é XML válido: tags sem fechamento, sem aspas nos atributos.
-        Estratégia: extrair blocos <STMTTRN>...</STMTTRN> com regex.
+        Estratégia: extrair blocos <STMTTRN>...</STMTTRN> (ou até próximo STMTTRN).
         """
         # Normaliza quebras de linha e remove cabeçalho antes de <OFX>
         body = re.sub(r"^.*?<OFX>", "<OFX>", raw, flags=re.DOTALL | re.IGNORECASE)
@@ -151,6 +191,13 @@ class OFXParser:
         blocos = re.findall(
             r"<STMTTRN>(.*?)</STMTTRN>", body, re.DOTALL | re.IGNORECASE
         )
+        # Fallback: alguns SGML não fecham STMTTRN
+        if not blocos:
+            blocos = re.findall(
+                r"<STMTTRN>(.*?)(?=<STMTTRN>|</BANKTRANLIST>|</STMTRS>|</OFX>)",
+                body,
+                re.DOTALL | re.IGNORECASE,
+            )
 
         for bloco in blocos:
             t = self._extrair_campos_sgml(bloco)

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Ativos - Investimentos{% endblock %}
+{% block page_title %}Ativos / Produtos{% endblock %}
+
+{% block content %}
+<div class="page-header flex justify-between items-end" style="gap:12px; flex-wrap:wrap;">
+  <div>
+    <h1>Ativos / Produtos</h1>
+    <p>Renda fixa (CDB/LCI/LCA/Debêntures/Tesouro), caixinhas, renda variável (ações/ETFs) e fundos (FI/FII).</p>
+  </div>
+  <div class="flex gap-2" style="flex-wrap:wrap;">
+    <a class="btn btn-secondary" href="/investimentos/instituicoes">Instituições</a>
+    <a class="btn btn-secondary" href="/investimentos/carteiras">Carteiras</a>
+    <a class="btn btn-ghost" href="/investimentos">Voltar</a>
+  </div>
+</div>
+
+{% if msg %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--success,#4ade80);">{{ msg }}</div>{% endif %}
+{% if erro %}<div class="card" style="margin-bottom:12px; border-left:4px solid var(--danger,#f87171);">Erro: {{ erro }}</div>{% endif %}
+
+<div class="card" style="margin-bottom:16px;">
+  <h3 style="margin-top:0;">Novo ativo/produto</h3>
+  <form method="post" action="/investimentos/ativos">
+    <input type="hidden" name="csrftoken" value="{{ csrf_token(request) }}">
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Nome *</label><input class="form-control" name="nome" required placeholder="Ex.: CDB Banco X 110% CDI, PETR4, KNRI11"></div>
+      <div class="form-group">
+        <label class="form-label">Classe *</label>
+        <select class="form-control" name="classe" required>
+          <option value="RENDA_FIXA">Renda Fixa</option>
+          <option value="CAIXINHA">Caixinha (liquidez diária)</option>
+          <option value="ACAO">Ação</option>
+          <option value="ETF">ETF</option>
+          <option value="FI">Fundo (FI)</option>
+          <option value="FII">Fundo Imobiliário (FII)</option>
+          <option value="OUTRO">Outro</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Tipo/Produto</label><input class="form-control" name="tipo_produto" placeholder="CDB, LCI, LCA, DEBENTURE, TESOURO, ACAO, ETF, FI, FII..."></div>
+      <div class="form-group"><label class="form-label">Ticker/Código</label><input class="form-control" name="ticker" placeholder="Ex.: PETR4, IVVB11 (se aplicável)"></div>
+      <div class="form-group"><label class="form-label">ISIN</label><input class="form-control" name="isin" placeholder="Opcional"></div>
+      <div class="form-group"><label class="form-label">Emissor</label><input class="form-control" name="emissor" placeholder="Banco/emissor (RF) ou gestor/fundo"></div>
+      <div class="form-group">
+        <label class="form-label">Instituição/Corretora</label>
+        <select class="form-control" name="instituicao_id">
+          <option value="">(nenhuma)</option>
+          {% for i in instituicoes %}<option value="{{ i.id }}">{{ i.nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Moeda</label>
+        <select class="form-control" name="moeda_id">
+          <option value="">(padrão/BRL)</option>
+          {% for m in moedas %}<option value="{{ m.idcontas_moedas }}">{{ m.contas_moedas_abrev }} - {{ m.contas_moedas_nome }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Indexador <span class="text-muted" style="font-weight:400;">(RF/caixinha)</span></label>
+        <select class="form-control" name="indexador_id">
+          <option value="">(nenhum)</option>
+          {% for ix in indexadores %}<option value="{{ ix.id }}">{{ ix.codigo }} - {{ ix.nome }}</option>{% endfor %}
+        </select>
+        <small class="text-muted">Se vazio, execute <code>scripts/seed_invest_indexadores.py</code> para popular CDI/Selic/IPCA.</small>
+      </div>
+      <div class="form-group"><label class="form-label">Taxa contratada</label><input class="form-control" name="taxa_contratada" placeholder="ex: 110 (110% CDI) ou 12,5 (prefixado)"></div>
+      <div class="form-group"><label class="form-label">Vencimento</label><input class="form-control" type="date" name="data_vencimento"></div>
+      <div class="form-group"><label class="form-label">Liquidez diária</label>
+        <select class="form-control" name="liquidez_diaria"><option value="0">Não</option><option value="1">Sim</option></select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Observações</label><input class="form-control" name="observacoes" placeholder="Opcional"></div>
+    </div>
+    <button class="btn btn-primary" type="submit">Salvar ativo/produto</button>
+  </form>
+</div>
+
+<div class="card p-0 overflow-hidden">
+  <div class="flex justify-between items-center" style="padding:12px 16px; border-bottom:1px solid var(--border, #334155);">
+    <strong>Ativos/produtos cadastrados</strong>
+    <span class="text-muted" style="font-size:12px;">{{ itens|length }} registro(s)</span>
+  </div>
+  <div class="table-wrapper">
+    <table>
+      <thead><tr><th>ID</th><th>Nome</th><th>Classe</th><th>Tipo</th><th>Ticker</th><th>Moeda</th><th>Indexador</th><th>Venc.</th></tr></thead>
+      <tbody>
+      {% for it in itens %}
+        <tr>
+          <td>#{{ it.id }}</td>
+          <td class="font-bold">{{ it.nome }}{% if it.emissor %}<div class="text-muted" style="font-size:12px; font-weight:400;">{{ it.emissor }}</div>{% endif %}</td>
+          <td>{{ it.classe }}</td>
+          <td>{{ it.tipo_produto or '-' }}</td>
+          <td>{{ it.ticker or '-' }}</td>
+          <td>{% if it.moeda_id %}{{ moedas_map.get(it.moeda_id, '#' ~ it.moeda_id) }}{% else %}-{% endif %}</td>
+          <td>{{ it.indexador.codigo if it.indexador else '-' }}</td>
+          <td>{{ it.data_vencimento or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="text-muted text-center" style="padding:24px;">Nenhum ativo/produto cadastrado. Cadastre os ativos para registrar movimentações e posições.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
