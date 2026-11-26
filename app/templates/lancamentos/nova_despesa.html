@@ -135,32 +135,36 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label">Projeto</label>
-      <div class="flex gap-2 items-center">
-        <select name="projeto" id="projeto_select" class="form-control" style="flex:1;">
+      <button type="button" class="btn btn-sm btn-ghost" id="btnAtivarProjeto" onclick="toggleProjetoCampo('projetoCampoWrap','btnAtivarProjeto', true)">+ Vincular a projeto</button>
+      <div id="projetoCampoWrap" style="display:none; margin-top:10px;">
+        <label class="form-label">Projeto</label>
+        <select name="projeto" id="projeto_select" class="form-control" onchange="onProjetoSelectChange(this, 'novoProjetoBox')">
           <option value="-1">Sem projeto</option>
           {% for p in projetos %}
           <option value="{{ p.projeto_id }}">{{ p.projetos_nome }}</option>
           {% endfor %}
+          <option value="__novo__">+ Criar novo projeto...</option>
         </select>
-        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('novoProjetoBox')">+ Novo</button>
-      </div>
-      <div id="novoProjetoBox" style="display:none; margin-top:10px; padding:12px; border:1px dashed #444; border-radius:8px; background:rgba(255,255,255,0.02);">
-        <div class="form-grid-2">
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Nome do projeto</label>
-            <input type="text" id="novoProjetoNome" class="form-control" placeholder="Ex: Reforma, Viagem...">
+        <div id="novoProjetoBox" style="display:none; margin-top:10px; padding:12px; border:1px dashed #444; border-radius:8px; background:rgba(255,255,255,0.02);">
+          <div class="form-grid-2">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Nome do projeto</label>
+              <input type="text" id="novoProjetoNome" class="form-control" placeholder="Ex: Reforma, Viagem...">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Cor</label>
+              <input type="color" id="novoProjetoCor" class="form-control" value="#6366f1" style="height:42px; padding:4px;">
+            </div>
           </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">Cor</label>
-            <input type="color" id="novoProjetoCor" class="form-control" value="#6366f1" style="height:42px; padding:4px;">
+          <div class="flex justify-end gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-ghost" onclick="cancelarNovoProjeto('projeto_select','novoProjetoBox')">Cancelar</button>
+            <button type="button" class="btn btn-sm btn-primary" onclick="salvarNovoProjeto('projeto_select','novoProjetoBox','novoProjetoNome','novoProjetoCor')">Salvar projeto</button>
           </div>
+          <div class="text-danger" style="font-size:12px; margin-top:6px; display:none;"></div>
         </div>
-        <div class="flex justify-end gap-2 mt-3">
-          <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('novoProjetoBox', false)">Cancelar</button>
-          <button type="button" class="btn btn-sm btn-primary" onclick="salvarNovoProjeto('projeto_select','novoProjetoBox','novoProjetoNome','novoProjetoCor')">Salvar projeto</button>
+        <div style="margin-top:6px;">
+          <button type="button" class="btn btn-sm btn-ghost" onclick="toggleProjetoCampo('projetoCampoWrap','btnAtivarProjeto', false)" style="padding:0; font-size:12px;">Ocultar projeto</button>
         </div>
-        <div id="novoProjetoErro" class="text-danger" style="font-size:12px; margin-top:6px; display:none;"></div>
       </div>
     </div>
 
@@ -361,6 +365,34 @@
     }
   }
 
+  function toggleProjetoCampo(wrapId, btnId, show) {
+    const wrap = document.getElementById(wrapId);
+    const btn = document.getElementById(btnId);
+    if (!wrap) return;
+    wrap.style.display = show ? '' : 'none';
+    if (btn) btn.style.display = show ? 'none' : '';
+    if (!show) {
+      const sel = wrap.querySelector('select[name="projeto"]');
+      if (sel) sel.value = '-1';
+      const box = wrap.querySelector('[id$="ProjetoBox"], [id*="NovoProjetoBox"], #novoProjetoBox');
+      if (box) toggleNovoProjeto(box.id, false);
+    }
+  }
+
+  function onProjetoSelectChange(sel, boxId) {
+    if (!sel) return;
+    if (sel.value === '__novo__') {
+      sel.value = '-1';
+      toggleNovoProjeto(boxId, true);
+    }
+  }
+
+  function cancelarNovoProjeto(selectId, boxId) {
+    const sel = document.getElementById(selectId);
+    if (sel && sel.value === '__novo__') sel.value = '-1';
+    toggleNovoProjeto(boxId, false);
+  }
+
   async function salvarNovoProjeto(selectId, boxId, nomeId, corId) {
     const nomeEl = document.getElementById(nomeId);
     const corEl = document.getElementById(corId);
@@ -389,7 +421,8 @@
       opt.value = data.id;
       opt.textContent = data.nome;
       opt.selected = true;
-      sel.appendChild(opt);
+      const novoOpt = Array.from(sel.options).find(o => o.value === '__novo__');
+      if (novoOpt) sel.insertBefore(opt, novoOpt); else sel.appendChild(opt);
       sel.value = String(data.id);
       nomeEl.value = '';
       corEl.value = '#6366f1';
