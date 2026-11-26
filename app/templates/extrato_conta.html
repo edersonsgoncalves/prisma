@@ -384,26 +384,28 @@
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Projeto</label>
-        <div class="flex gap-2 items-center">
-          <select name="projeto" id="edit_projeto" class="form-control" style="flex:1;">
+        <button type="button" class="btn btn-sm btn-ghost" id="btnAtivarProjetoConta" onclick="toggleProjetoCampo('projetoCampoWrapConta','btnAtivarProjetoConta', true)">+ Vincular a projeto</button>
+        <div id="projetoCampoWrapConta" style="display:none; margin-top:10px;">
+          <label class="form-label">Projeto</label>
+          <select name="projeto" id="edit_projeto" class="form-control" onchange="onProjetoSelectChange(this, 'editContaNovoProjetoBox')">
             <option value="-1">Sem projeto</option>
             {% for p in projetos|default([]) %}
             <option value="{{ p.projeto_id }}">{{ p.projetos_nome }}</option>
             {% endfor %}
+            <option value="__novo__">+ Criar novo projeto...</option>
           </select>
-          <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('editContaNovoProjetoBox')">+ Novo</button>
-        </div>
-        <div id="editContaNovoProjetoBox" style="display:none; margin-top:10px; padding:12px; border:1px dashed #444; border-radius:8px; background:rgba(255,255,255,0.02);">
-          <div class="form-grid-2">
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">Nome do projeto</label><input type="text" id="editContaNovoProjetoNome" class="form-control"></div>
-            <div class="form-group" style="margin-bottom:0;"><label class="form-label">Cor</label><input type="color" id="editContaNovoProjetoCor" class="form-control" value="#6366f1" style="height:42px; padding:4px;"></div>
+          <div id="editContaNovoProjetoBox" style="display:none; margin-top:10px; padding:12px; border:1px dashed #444; border-radius:8px; background:rgba(255,255,255,0.02);">
+            <div class="form-grid-2">
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">Nome do projeto</label><input type="text" id="editContaNovoProjetoNome" class="form-control"></div>
+              <div class="form-group" style="margin-bottom:0;"><label class="form-label">Cor</label><input type="color" id="editContaNovoProjetoCor" class="form-control" value="#6366f1" style="height:42px; padding:4px;"></div>
+            </div>
+            <div class="flex justify-end gap-2 mt-3">
+              <button type="button" class="btn btn-sm btn-ghost" onclick="cancelarNovoProjeto('edit_projeto','editContaNovoProjetoBox')">Cancelar</button>
+              <button type="button" class="btn btn-sm btn-primary" onclick="salvarNovoProjeto('edit_projeto','editContaNovoProjetoBox','editContaNovoProjetoNome','editContaNovoProjetoCor')">Salvar projeto</button>
+            </div>
+            <div class="text-danger" style="font-size:12px; margin-top:6px; display:none;"></div>
           </div>
-          <div class="flex justify-end gap-2 mt-3">
-            <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('editContaNovoProjetoBox', false)">Cancelar</button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="salvarNovoProjeto('edit_projeto','editContaNovoProjetoBox','editContaNovoProjetoNome','editContaNovoProjetoCor')">Salvar projeto</button>
-          </div>
-          <div class="text-danger" style="font-size:12px; margin-top:6px; display:none;"></div>
+          <div style="margin-top:6px;"><button type="button" class="btn btn-sm btn-ghost" onclick="toggleProjetoCampo('projetoCampoWrapConta','btnAtivarProjetoConta', false)" style="padding:0; font-size:12px;">Ocultar projeto</button></div>
         </div>
       </div>
       <!-- Efetivado -->
@@ -726,6 +728,7 @@
         document.getElementById('edit_data').value = data.data || '';
         document.getElementById('edit_cat').value = data.categoria || '';
         const projEl = document.getElementById('edit_projeto'); if (projEl) projEl.value = data.projeto ? String(data.projeto) : '-1';
+        toggleProjetoCampo('projetoCampoWrapConta', 'btnAtivarProjetoConta', !!data.projeto);
         if (data.tipo == 1) document.getElementById('edit_tipo_receita').checked = true;
         else document.getElementById('edit_tipo_despesa').checked = true;
         _setEfetivado('edit', data.efetivado, data.data_efetivado);
@@ -828,6 +831,16 @@
     box.style.display = show ? '' : 'none';
     if (!show) { const err = box.querySelector('.text-danger'); if (err) { err.style.display='none'; err.textContent=''; } }
   }
+  function toggleProjetoCampo(wrapId, btnId, show) {
+    const wrap = document.getElementById(wrapId);
+    const btn = document.getElementById(btnId);
+    if (!wrap) return;
+    wrap.style.display = show ? '' : 'none';
+    if (btn) btn.style.display = show ? 'none' : '';
+    if (!show) { const sel = wrap.querySelector('select[name="projeto"]'); if (sel) sel.value = '-1'; const box = wrap.querySelector('[id*="NovoProjetoBox"]'); if (box) toggleNovoProjeto(box.id, false); }
+  }
+  function onProjetoSelectChange(sel, boxId) { if (sel && sel.value === '__novo__') { sel.value = '-1'; toggleNovoProjeto(boxId, true); } }
+  function cancelarNovoProjeto(selectId, boxId) { const sel = document.getElementById(selectId); if (sel && sel.value === '__novo__') sel.value = '-1'; toggleNovoProjeto(boxId, false); }
 
   async function salvarNovoProjeto(selectId, boxId, nomeId, corId) {
     const nomeEl = document.getElementById(nomeId);
@@ -845,7 +858,7 @@
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data.erro || ('Erro ' + r.status));
       const sel = document.getElementById(selectId);
-      if (sel) { const opt = document.createElement('option'); opt.value = data.id; opt.textContent = data.nome; opt.selected = true; sel.appendChild(opt); sel.value = String(data.id); }
+      if (sel) { const opt = document.createElement('option'); opt.value = data.id; opt.textContent = data.nome; opt.selected = true; const novoOpt = Array.from(sel.options).find(o => o.value === '__novo__'); if (novoOpt) sel.insertBefore(opt, novoOpt); else sel.appendChild(opt); sel.value = String(data.id); }
       if (nomeEl) nomeEl.value = '';
       if (corEl) corEl.value = '#6366f1';
       toggleNovoProjeto(boxId, false);
