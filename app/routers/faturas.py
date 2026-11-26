@@ -12,7 +12,7 @@ from sqlalchemy import extract, func, inspect,select
 
 from app.database import get_db
 from app.auth import require_login
-from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria, CartaoAdicional
+from app.models import FaturaCartao, Operacao, ContaBancaria, Categoria, CartaoAdicional, Projeto
 from app.routers.lancamentos_utils import log_evento, recalcular_total_fatura
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 
@@ -168,6 +168,7 @@ async def detalhe_fatura(
         Categoria.categorias_pai_id.isnot(None),
         Categoria.categorias_nome
     ).all()
+    projetos = db.query(Projeto).order_by(Projeto.projetos_nome).all()
 
     # --- ENRIQUECIMENTO DE DADOS PARA A SIDEBAR ---
     stats = {
@@ -266,6 +267,7 @@ async def detalhe_fatura(
         "operacoes": operacoes,
         "contas_todas": contas, 
         "categorias": categorias,
+        "projetos": projetos,
         "id_anterior": fatura_anterior.fatura_id if fatura_anterior else None,
         "id_proxima": proxima_fatura.fatura_id if proxima_fatura else None,
         "id_atual_logica": id_atual_logic.fatura_id if id_atual_logic else None,

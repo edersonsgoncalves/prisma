@@ -11,7 +11,7 @@ from sqlalchemy import func, and_, or_, extract, case
 
 from app.database import get_db
 from app.auth import require_login
-from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao
+from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao, Projeto
 
 router = APIRouter(prefix="/extrato", tags=["extrato"])
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -128,6 +128,7 @@ async def extrato_unificado(
         Categoria.categorias_nome
     ).all()
     contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).order_by(ContaBancaria.nome_conta.asc()).all()
+    projetos = db.query(Projeto).order_by(Projeto.projetos_nome).all()
     
     mapa_tipo_conta = {
         0: "Pagamento de Fatura",
@@ -146,6 +147,7 @@ async def extrato_unificado(
         "saldo_anterior": saldo_anterior,
         "categorias": categorias,
         "contas_todas": contas_todas,
+        "projetos": projetos,
         "tipos_conta_map": mapa_tipo_conta,
         "mes": m,
         "ano": y,
@@ -232,6 +234,7 @@ async def extrato_por_conta(
         Categoria.categorias_nome
     ).all()
     contas_todas = db.query(ContaBancaria).filter(ContaBancaria.tipo_conta != 4).all()
+    projetos = db.query(Projeto).order_by(Projeto.projetos_nome).all()
 
     return templates.TemplateResponse("extrato_conta.html", {
         "request": request,
@@ -241,6 +244,7 @@ async def extrato_por_conta(
         "saldo_anterior": saldo_anterior,
         "categorias": categorias,
         "contas_todas": contas_todas,
+        "projetos": projetos,
         "mes": m,
         "ano": y,
         "tipo_lancamento_id": tipo_lancamento_id,
