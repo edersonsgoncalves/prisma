@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import require_login
-from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao, LogOperacao
+from app.models import Operacao, ContaBancaria, Categoria, FaturaCartao, LogOperacao, Projeto
 from app.helpers import formata_moeda_brl, mostra_data, cor_valor, mes_por_extenso, formata_parcela
 from app.templates import templates
 
@@ -38,6 +38,7 @@ def _ctx_base(db: Session) -> dict:
             Categoria.categorias_pai_id.isnot(None),
             Categoria.categorias_nome
         ).all(),
+        "projetos": db.query(Projeto).order_by(Projeto.projetos_nome).all(),
         "hoje": date.today().isoformat(),
     }
 
@@ -144,6 +145,7 @@ async def inserir_lancamento(
     ocorrencias: Optional[int] = Form(default=12), #
     adicional_id: Optional[str] = Form(default=None),
     conta_destino: Optional[str] = Form(default=None),
+    projeto: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -156,6 +158,7 @@ async def inserir_lancamento(
     # Converte categoria e fatura para int ou None (lidando com strings vazias do form)
     cat_id = int(categoria) if categoria and categoria.strip() and categoria != "-1" else None
     fat_id = int(fatura) if fatura and fatura.strip() else None
+    proj_id = int(projeto) if projeto and str(projeto).strip() and str(projeto) != "-1" else None
 
     # Lógica Inteligente: Se a conta selecionada for um Cartão (tipo 4),
     # sinalizamos que haverá fatura sem alterar `conta` nem `fat_id` —
@@ -262,7 +265,8 @@ async def inserir_lancamento(
             operacoes_data_efetivado=curr_dt_efetivado,
             operacoes_validacao=1,
             operacoes_grupo_id=grupo_id,
-            operacoes_adicional_id=add_id
+            operacoes_adicional_id=add_id,
+            operacoes_projeto=proj_id,
         )
         db.add(op)
         
@@ -281,7 +285,8 @@ async def inserir_lancamento(
                 operacoes_data_efetivado=curr_dt_efetivado,
                 operacoes_validacao=1,
                 operacoes_grupo_id=grupo_id,
-                operacoes_transf_rel=op.operacoes_id 
+                operacoes_transf_rel=op.operacoes_id,
+                operacoes_projeto=proj_id,
             )
             # A conta de origem em uma transferência deve ser negativa
             op.operacoes_valor = -abs(curr_valor)
@@ -504,6 +509,7 @@ async def editar_get(
         "data_efetivado": op.operacoes_data_efetivado.strftime("%Y-%m-%d") if op.operacoes_data_efetivado else None,
         "adicional_id": op.operacoes_adicional_id,
         "grupo_id": op.operacoes_grupo_id,
+        "projeto": int(op.operacoes_projeto) if op.operacoes_projeto is not None else None,
     }))
 
 
@@ -523,6 +529,7 @@ async def editar(
     adicional_id: Optional[str] = Form(default=None),
     nova_parcela_total: Optional[str] = Form(default=None),
     next_url: Optional[str] = Form(default=None),
+    projeto: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -539,6 +546,7 @@ async def editar(
     dt_operacao = date.fromisoformat(data)
     cat_id = int(categoria) if categoria and str(categoria).strip() else None
     add_id = int(adicional_id) if adicional_id and str(adicional_id).strip() else None
+    proj_id = int(projeto) if projeto and str(projeto).strip() and str(projeto) != "-1" else None
     nova_parcela_total_int = int(nova_parcela_total) if nova_parcela_total and str(nova_parcela_total).strip() else None
 
     detalhes = f"Editado: '{op.operacoes_descricao}' -> '{descricao}'. R$ {op.operacoes_valor} -> R$ {valor_final}"
@@ -554,6 +562,7 @@ async def editar(
         operacao.operacoes_data_lancamento = dt_operacao
         operacao.operacoes_categoria = cat_id
         operacao.operacoes_adicional_id = add_id
+        operacao.operacoes_projeto = proj_id
 
     log_evento(db, "UPDATE", "OPERACAO", op_id, detalhes, sessao.get("id"))
     
@@ -622,6 +631,8 @@ async def editar(
             o.operacoes_valor = valor_final
             o.operacoes_conta = conta
             o.operacoes_tipo = tipo
+            o.operacoes_adicional_id = add_id
+            o.operacoes_projeto = proj_id
             
             # Atualiza total de parcelas se necessário
             if nova_parcela_total and o.operacoes_parcela:
@@ -700,7 +711,8 @@ async def editar(
                             operacoes_validacao=1,
                             operacoes_efetivado=0,
                             operacoes_grupo_id=grupo_id,
-                            operacoes_adicional_id=adicional_id
+                            operacoes_adicional_id=adicional_id,
+                            operacoes_projeto=proj_id,
                         )
                         
                         conta_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
@@ -789,7 +801,8 @@ async def converter_para_transferencia(
         operacoes_efetivado=op.operacoes_efetivado,
         operacoes_data_efetivado=op.operacoes_data_efetivado,
         operacoes_validacao=1,
-        operacoes_grupo_id=grupo_id
+        operacoes_grupo_id=grupo_id,
+        operacoes_projeto=op.operacoes_projeto,
     )
     
     # Atualizamos o original

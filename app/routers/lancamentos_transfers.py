@@ -187,6 +187,7 @@ async def editar_transferencia(
     adicional_id: Optional[int] = Form(default=None),
     escopo: str = Form(default="so_este"),
     next_url: Optional[str] = Form(default=None),
+    projeto: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     sessao: dict = Depends(require_login),
 ):
@@ -210,6 +211,7 @@ async def editar_transferencia(
     valor_limpo = valor.replace(".", "").replace(",", ".")
     valor_float = float(valor_limpo)
     dt_operacao = date.fromisoformat(data)
+    proj_id = int(projeto) if projeto and str(projeto).strip() and str(projeto) != "-1" else None
     
     # Lógica de Efetivação
     dt_efetivado_val = None
@@ -234,6 +236,7 @@ async def editar_transferencia(
         op_saida.operacoes_adicional_id = adicional_id
         op_saida.operacoes_efetivado = efetivado
         op_saida.operacoes_data_efetivado = dt_efetivado_val
+        op_saida.operacoes_projeto = proj_id
         
         # Recalcula fatura se a conta de origem for cartão
         acct_saida_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta).first()
@@ -252,6 +255,7 @@ async def editar_transferencia(
         op_entrada.operacoes_data_lancamento = dt_operacao
         op_entrada.operacoes_efetivado = efetivado
         op_entrada.operacoes_data_efetivado = dt_efetivado_val
+        op_entrada.operacoes_projeto = proj_id
 
         # Recalcula fatura se a conta destino for cartão
         acct_entrada_obj = db.query(ContaBancaria).filter(ContaBancaria.conta_id == conta_destino).first()
@@ -282,6 +286,7 @@ async def editar_transferencia(
 
         for s_op in ops_seguintes:
             s_op.operacoes_descricao = descricao
+            s_op.operacoes_projeto = proj_id
             
             if new_date != old_date:
                 diff = relativedelta(s_op.operacoes_data_lancamento, old_date)

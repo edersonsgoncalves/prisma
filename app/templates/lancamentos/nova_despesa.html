@@ -134,6 +134,36 @@
       </div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label">Projeto</label>
+      <div class="flex gap-2 items-center">
+        <select name="projeto" id="projeto_select" class="form-control" style="flex:1;">
+          <option value="-1">Sem projeto</option>
+          {% for p in projetos %}
+          <option value="{{ p.projeto_id }}">{{ p.projetos_nome }}</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('novoProjetoBox')">+ Novo</button>
+      </div>
+      <div id="novoProjetoBox" style="display:none; margin-top:10px; padding:12px; border:1px dashed #444; border-radius:8px; background:rgba(255,255,255,0.02);">
+        <div class="form-grid-2">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Nome do projeto</label>
+            <input type="text" id="novoProjetoNome" class="form-control" placeholder="Ex: Reforma, Viagem...">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">Cor</label>
+            <input type="color" id="novoProjetoCor" class="form-control" value="#6366f1" style="height:42px; padding:4px;">
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-3">
+          <button type="button" class="btn btn-sm btn-ghost" onclick="toggleNovoProjeto('novoProjetoBox', false)">Cancelar</button>
+          <button type="button" class="btn btn-sm btn-primary" onclick="salvarNovoProjeto('projeto_select','novoProjetoBox','novoProjetoNome','novoProjetoCor')">Salvar projeto</button>
+        </div>
+        <div id="novoProjetoErro" class="text-danger" style="font-size:12px; margin-top:6px; display:none;"></div>
+      </div>
+    </div>
+
     <input type="hidden" name="fatura" id="input_fatura" value="">
 
     <div class="form-group mb-6 flex items-center gap-2">
@@ -318,6 +348,56 @@
   function selectCardAndSubmit(cardId) {
     document.getElementById('input_fatura').value = cardId;
     document.querySelector('form').submit();
+  }
+
+  function toggleNovoProjeto(boxId, force) {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const show = typeof force === 'boolean' ? force : box.style.display === 'none';
+    box.style.display = show ? '' : 'none';
+    if (!show) {
+      const err = (box && box.querySelector('.text-danger')) || document.getElementById('novoProjetoErro');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+    }
+  }
+
+  async function salvarNovoProjeto(selectId, boxId, nomeId, corId) {
+    const nomeEl = document.getElementById(nomeId);
+    const corEl = document.getElementById(corId);
+    const box = document.getElementById(boxId);
+    const err = (box && box.querySelector('.text-danger')) || document.getElementById('novoProjetoErro');
+    const nome = (nomeEl.value || '').trim();
+    const cor = (corEl.value || '#6366f1').trim();
+    if (!nome) {
+      err.textContent = 'Informe o nome do projeto.';
+      err.style.display = '';
+      return;
+    }
+    err.style.display = 'none'; err.textContent = '';
+    try {
+      const csrf = (document.querySelector('input[name="csrftoken"]') || {}).value || '';
+      const body = new URLSearchParams({ nome, cor, csrftoken: csrf });
+      const r = await fetch('/projetos/api/novo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrf },
+        body
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.erro || ('Erro ' + r.status));
+      const sel = document.getElementById(selectId);
+      const opt = document.createElement('option');
+      opt.value = data.id;
+      opt.textContent = data.nome;
+      opt.selected = true;
+      sel.appendChild(opt);
+      sel.value = String(data.id);
+      nomeEl.value = '';
+      corEl.value = '#6366f1';
+      toggleNovoProjeto(boxId, false);
+    } catch (e) {
+      err.textContent = e.message || 'Erro ao criar projeto.';
+      err.style.display = '';
+    }
   }
 </script>
 {% endblock %}
