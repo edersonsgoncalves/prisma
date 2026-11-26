@@ -327,10 +327,22 @@ async def fechar_fatura(
     fatura.valor_total = valor_total
 
     # 2. Verifica se a próxima fatura já existe para esse cartão
+    proxima_mes_ref = proxima_venc.replace(day=1)
     existe = db.query(FaturaCartao).filter(
         FaturaCartao.conta_id == fatura.conta_id,
         FaturaCartao.data_vencimento == proxima_venc
     ).first()
+    if not existe:
+        existe = db.query(FaturaCartao).filter(
+            FaturaCartao.conta_id == fatura.conta_id,
+            FaturaCartao.mes_referencia == proxima_mes_ref
+        ).first()
+    if not existe:
+        existe = db.query(FaturaCartao).filter(
+            FaturaCartao.conta_id == fatura.conta_id,
+            FaturaCartao.fechado == 0,
+            FaturaCartao.data_vencimento > fatura.data_vencimento
+        ).order_by(FaturaCartao.data_vencimento.asc()).first()
 
     if not existe:
         nova_fatura = FaturaCartao(
@@ -374,7 +386,7 @@ async def fechar_fatura(
         operacoes_transf_rel=op_pagamento_saida.operacoes_id,
         operacoes_validacao=1,
         operacoes_efetivado=0,
-        operacoes_fatura=fatura_id,
+        operacoes_fatura=fatura_id_final,
         operacoes_conta=fatura.conta_id,
         operacoes_descricao=f"Pagamento fatura | {cartao_nome_tratado} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
     )
