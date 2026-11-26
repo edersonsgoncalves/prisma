@@ -1615,6 +1615,10 @@
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/lancamentos/deletar-massa';
+    const csrf = (document.querySelector('input[name="csrftoken"]') || {}).value || '';
+    const inputCsrf = document.createElement('input');
+    inputCsrf.type = 'hidden'; inputCsrf.name = 'csrftoken'; inputCsrf.value = csrf;
+    form.appendChild(inputCsrf);
     
     const input = document.createElement('input');
     input.type = 'hidden';
@@ -1638,6 +1642,10 @@
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/lancamentos/conciliar-massa';
+    const csrf = (document.querySelector('input[name="csrftoken"]') || {}).value || '';
+    const inputCsrf = document.createElement('input');
+    inputCsrf.type = 'hidden'; inputCsrf.name = 'csrftoken'; inputCsrf.value = csrf;
+    form.appendChild(inputCsrf);
     
     const input = document.createElement('input');
     input.type = 'hidden';
