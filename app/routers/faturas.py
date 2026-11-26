@@ -374,7 +374,7 @@ async def fechar_fatura(
         operacoes_transf_rel=op_pagamento_saida.operacoes_id,
         operacoes_validacao=1,
         operacoes_efetivado=0,
-        operacoes_fatura=fatura_id_final,
+        operacoes_fatura=fatura_id,
         operacoes_conta=fatura.conta_id,
         operacoes_descricao=f"Pagamento fatura | {cartao_nome_tratado} | Fatura {MESES_PT[fatura.mes_referencia.month]}/{fatura.mes_referencia.strftime('%y')}"
     )
